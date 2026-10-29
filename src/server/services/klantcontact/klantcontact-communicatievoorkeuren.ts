@@ -1,12 +1,12 @@
-import { getMostRecentByContactgegevenType } from './klantcontact-helpers.ts';
+import type { ProfielserviceBackend } from './klantcontact-backend-types.ts';
+import {
+  getMostRecentByContactgegevenType,
+  getZaakKanaalVoorkeuren,
+} from './klantcontact-helpers.ts';
 import type {
   CommunicatievoorkeurenResponseFrontend,
   ContactgegevenType,
 } from './klantcontact-profieldienst-types.ts';
-import {
-  fetchDienstverlener,
-  fetchProfiel,
-} from './klantcontact-profieldienst.ts';
 import { featureToggle } from './klantcontact-service-config.ts';
 import {
   apiErrorResult,
@@ -31,22 +31,23 @@ export const ContactgegevenTypeValues = Object.values(
 ) as readonly (typeof ContactgegevenTypes)[keyof typeof ContactgegevenTypes][];
 
 export async function fetchCommunicatievoorkeuren(
-  authProfileAndToken: AuthProfileAndToken
+  authProfileAndToken: AuthProfileAndToken,
+  backend: ProfielserviceBackend
 ): Promise<ApiResponse<CommunicatievoorkeurenResponseFrontend>> {
   if (!featureToggle.communicatievoorkeuren) {
     return apiPostponeResult(null);
   }
 
-  const [locationsResponse, profiel, dienstverlenerResponse] =
+  const [locationsResponse, contactgegevens, dienstverlenerResponse] =
     await Promise.all([
       fetchMyLocations(authProfileAndToken),
-      fetchProfiel(authProfileAndToken),
-      fetchDienstverlener(authProfileAndToken),
+      backend.fetchContactgegevens(authProfileAndToken),
+      backend.fetchDienstverlener(authProfileAndToken),
     ]);
 
   if (
     locationsResponse.status !== 'OK' &&
-    profiel.status !== 'OK' &&
+    contactgegevens.status !== 'OK' &&
     dienstverlenerResponse.status !== 'OK'
   ) {
     return apiErrorResult(
@@ -56,15 +57,15 @@ export async function fetchCommunicatievoorkeuren(
   }
 
   const email = getMostRecentByContactgegevenType(
-    profiel,
+    contactgegevens,
     ContactgegevenTypes.Email
   );
   const phone = getMostRecentByContactgegevenType(
-    profiel,
+    contactgegevens,
     ContactgegevenTypes.Telefoonnummer
   );
   const app = getMostRecentByContactgegevenType(
-    profiel,
+    contactgegevens,
     ContactgegevenTypes.ApplicatieId
   );
 
@@ -102,5 +103,6 @@ export async function fetchCommunicatievoorkeuren(
   return apiSuccessResult({
     aangeslotenDiensten,
     standaardContactgegevens,
+    zaakKanaalVoorkeuren: getZaakKanaalVoorkeuren(contactgegevens),
   });
 }

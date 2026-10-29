@@ -46,6 +46,7 @@ export type ContactgegevenSource = {
   waarde: string;
   isGeverifieerd: boolean;
   isDefault: boolean;
+  referentie?: string | null; // OpenKlant DigitaalAdres.referentie, bij een zaakvoorkeur de zaakidentificatie
   createdAt: string; // ISO date string
   lastUpdated: string; // ISO date string
   scopes: ScopeSource[];
@@ -80,6 +81,7 @@ export type ContactgegevenPayloadSource = {
   waarde: string;
   scope?: ContactGegevenScopeSource;
   isDefault: boolean;
+  referentie?: string; // De zaakidentificatie, zie ContactgegevenSource
 };
 
 export type ContactgegevenPerTypeFrontend = Record<
@@ -87,16 +89,27 @@ export type ContactgegevenPerTypeFrontend = Record<
   ContactgegevenFrontend
 >;
 
-export type CommunicatievoorkeurenResponseFrontend = {
-  standaardContactgegevens: ContactgegevenPerTypeFrontend | null;
-  aangeslotenDiensten?: DienstSource[];
+// De kanalen die de OMC (NotifyNL) per zaak kan bedienen.
+export type ZaakKanaal = Extract<
+  ContactgegevenType,
+  'Email' | 'Telefoonnummer'
+>;
+
+export type ZaakKanaalVoorkeurFrontend = {
+  zaakIdentificatie: string;
+  contactgegeven: ContactgegevenFrontend;
 };
 
-export type CommunicatievoorkeurPayloadFrontend = {
-  type: ContactgegevenType;
-  value: ContactgegevenFrontend['value'];
-  dienstId?: DienstSource['id'];
-  voorkeurId?: VoorkeurSource['id'];
+export type ZaakKanaalVoorkeurPayloadFrontend = {
+  zaakIdentificatie: string;
+  kanaal: ZaakKanaal;
+  value: string;
+};
+
+export type CommunicatievoorkeurenResponseFrontend = {
+  standaardContactgegevens: ContactgegevenPerTypeFrontend | null;
+  zaakKanaalVoorkeuren: ZaakKanaalVoorkeurFrontend[];
+  aangeslotenDiensten?: DienstSource[];
 };
 
 export type DeleteContactgegevenResponseFrontend = {

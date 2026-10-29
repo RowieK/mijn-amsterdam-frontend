@@ -1,3 +1,5 @@
+import type { GemeenteKlantcontactConfig } from './klantcontact-backend-types.ts';
+import { zaakIdentificatieAlsReferentie } from './klantcontact-helpers.ts';
 import { isEnabled } from '../../config/azure-appconfiguration.ts';
 import { getFromEnv } from '../../helpers/env.ts';
 
@@ -23,6 +25,14 @@ export const salesforceDataRequestConfig = {
   },
 };
 
-export const profieldienstRequestConfig = {
-  url: getFromEnv('BFF_PROFIEL_API_BASE_URL'),
-};
+export function getAmsterdamKlantcontactConfig(): GemeenteKlantcontactConfig {
+  return {
+    profielservice: {
+      url: getFromEnv('BFF_PROFIEL_API_BASE_URL'),
+    },
+    zaakVoorkeur: {
+      referentie: zaakIdentificatieAlsReferentie,
+      kanalen: ['Email', 'Telefoonnummer'],
+    },
+  };
+}

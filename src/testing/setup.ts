@@ -173,6 +173,7 @@ process.env.DEBUG_RESPONSE_DATA = '';
 process.env.DEBUG_REQUEST_DATA = '';
 
 process.env.BFF_CONTACTMOMENTEN_BASE_URL = `${remoteApiHost}/salesforce/contactmomenten`;
+process.env.BFF_PROFIEL_API_BASE_URL = `${remoteApiHost}/profielservice`;
 
 process.env.BFF_POM_API_BASE_URL = `${remoteApiHost}/pom`;
 

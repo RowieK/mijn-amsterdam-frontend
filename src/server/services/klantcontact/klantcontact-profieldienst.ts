@@ -1,5 +1,11 @@
 import { HttpStatusCode } from 'axios';
 
+import type {
+  CreateContactgegevenOptions,
+  GemeenteKlantcontactConfig,
+  ProfielserviceBackend,
+  VerifyVerificationRequestProps,
+} from './klantcontact-backend-types.ts';
 import {
   getIdentificatieType,
   transformContactgegevenSource,
@@ -14,22 +20,24 @@ import type {
   VerifyVerificationRequestResponse,
 } from './klantcontact-profieldienst-types.ts';
 import type { DienstverlenerSource } from './klantcontact-profieldienst-types.ts';
-import { profieldienstRequestConfig } from './klantcontact-service-config.ts';
-import { type ApiResponse } from '../../../universal/helpers/api.ts';
+import { apiSuccessResult, type ApiResponse, } from '../../../universal/helpers/api.ts';
 import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
 import { getCustomApiConfig } from '../../helpers/source-api-helpers.ts';
 import { requestData } from '../../helpers/source-api-request.ts';
 
 const DEFAULT_DIENSTVERLENER = 'amsterdam';
 
-export async function fetchProfiel(
+type ProfielserviceConfig = GemeenteKlantcontactConfig['profielservice'];
+
+async function fetchProfiel(
+  profielserviceConfig: ProfielserviceConfig,
   authProfileAndToken: AuthProfileAndToken
 ): Promise<ApiResponse<ContactProfieldienstResponseSource>> {
   const identificatieType = getIdentificatieType(
     authProfileAndToken.profile.profileType
   );
 
-  const apiConfig = getCustomApiConfig(profieldienstRequestConfig, {
+  const apiConfig = getCustomApiConfig(profielserviceConfig, {
     method: 'POST',
     data: {
       identificatieType,
@@ -53,11 +61,25 @@ export async function fetchProfiel(
   return response;
 }
 
-export async function fetchDienstverlener(
+async function fetchContactgegevens(
+  profielserviceConfig: ProfielserviceConfig,
+  authProfileAndToken: AuthProfileAndToken
+): Promise<ApiResponse<ContactgegevenSource[]>> {
+  const profiel = await fetchProfiel(profielserviceConfig, authProfileAndToken);
+
+  if (profiel.status !== 'OK') {
+    return profiel;
+  }
+
+  return apiSuccessResult(profiel.content.contactgegevens);
+}
+
+async function fetchDienstverlener(
+  profielserviceConfig: ProfielserviceConfig,
   authProfileAndToken: AuthProfileAndToken,
   dienstverlenerNaam: string = DEFAULT_DIENSTVERLENER
 ): Promise<ApiResponse<DienstverlenerSource>> {
-  const apiConfig = getCustomApiConfig(profieldienstRequestConfig, {
+  const apiConfig = getCustomApiConfig(profielserviceConfig, {
     method: 'GET',
     formatUrl({ url }) {
       return `${url}/dienstverlener/${dienstverlenerNaam}`;
@@ -79,10 +101,12 @@ export async function fetchDienstverlener(
 
 // This api call also sends a verification request to the given phone or email.
 // The data will be added but isGeverifieerd will be false until the user verifies with the received code.
-export async function createContactgegeven(
+async function createContactgegeven(
+  profielserviceConfig: ProfielserviceConfig,
   authProfileAndToken: AuthProfileAndToken,
   contactgegevenType: ContactgegevenType,
-  contactgegevenWaarde: string
+  contactgegevenWaarde: string,
+  { referentie, isDefault = true }: CreateContactgegevenOptions = {}
 ): Promise<ApiResponse<ContactgegevenFrontend>> {
   const identificatieType = getIdentificatieType(
     authProfileAndToken.profile.profileType
@@ -92,10 +116,11 @@ export async function createContactgegeven(
     identificatieNummer: authProfileAndToken.profile.id,
     type: contactgegevenType,
     waarde: contactgegevenWaarde,
-    isDefault: true,
+    isDefault,
+    ...(referentie && { referentie }),
   };
 
-  const apiConfig = getCustomApiConfig(profieldienstRequestConfig, {
+  const apiConfig = getCustomApiConfig(profielserviceConfig, {
     method: 'POST',
     data: payload,
     headers: {
@@ -114,7 +139,8 @@ export async function createContactgegeven(
   return requestData<ContactgegevenFrontend>(apiConfig);
 }
 
-export async function deleteContactgegeven(
+async function deleteContactgegeven(
+  profielserviceConfig: ProfielserviceConfig,
   authProfileAndToken: AuthProfileAndToken,
   contactgegevenId: ContactgegevenSource['id']
 ): Promise<ApiResponse<null>> {
@@ -122,7 +148,7 @@ export async function deleteContactgegeven(
     authProfileAndToken.profile.profileType
   );
 
-  const apiConfig = getCustomApiConfig(profieldienstRequestConfig, {
+  const apiConfig = getCustomApiConfig(profielserviceConfig, {
     method: 'DELETE',
     data: {
       identificatieType,
@@ -137,13 +163,8 @@ export async function deleteContactgegeven(
   return requestData<null>(apiConfig);
 }
 
-type VerifyVerificationRequestProps = {
-  value: string;
-  code: string;
-  type: ContactgegevenType;
-};
-
-export async function verifyContactgegeven(
+async function verifyContactgegeven(
+  profielserviceConfig: ProfielserviceConfig,
   authProfileAndToken: AuthProfileAndToken,
   { value, code, type }: VerifyVerificationRequestProps
 ) {
@@ -159,7 +180,7 @@ export async function verifyContactgegeven(
     verificatieCode: code,
   };
 
-  const apiConfig = getCustomApiConfig(profieldienstRequestConfig, {
+  const apiConfig = getCustomApiConfig(profielserviceConfig, {
     method: 'POST',
     data,
     formatUrl({ url }) {
@@ -172,4 +193,40 @@ export async function verifyContactgegeven(
   });
 
   return requestData<VerifyVerificationRequestResponse>(apiConfig);
+}
+
+export function createProfielserviceBackend({
+  profielservice,
+}: GemeenteKlantcontactConfig): ProfielserviceBackend {
+  return {
+    fetchContactgegevens: (authProfileAndToken) =>
+      fetchContactgegevens(profielservice, authProfileAndToken),
+    fetchDienstverlener: (authProfileAndToken, dienstverlenerNaam) =>
+      fetchDienstverlener(
+        profielservice,
+        authProfileAndToken,
+        dienstverlenerNaam
+      ),
+    createContactgegeven: (
+      authProfileAndToken,
+      contactgegevenType,
+      contactgegevenWaarde,
+      options
+    ) =>
+      createContactgegeven(
+        profielservice,
+        authProfileAndToken,
+        contactgegevenType,
+        contactgegevenWaarde,
+        options
+      ),
+    deleteContactgegeven: (authProfileAndToken, contactgegevenId) =>
+      deleteContactgegeven(
+        profielservice,
+        authProfileAndToken,
+        contactgegevenId
+      ),
+    verifyContactgegeven: (authProfileAndToken, props) =>
+      verifyContactgegeven(profielservice, authProfileAndToken, props),
+  };
 }

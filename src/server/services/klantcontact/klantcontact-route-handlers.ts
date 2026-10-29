@@ -1,17 +1,12 @@
 import createDebugger from 'debug';
 import type { Request } from 'express';
 
+import { klantcontactBackend } from './klantcontact-backend.ts';
 import {
   ContactgegevenTypes,
   ContactgegevenTypeValues,
   fetchCommunicatievoorkeuren,
 } from './klantcontact-communicatievoorkeuren.ts';
-import {
-  createContactgegeven,
-  deleteContactgegeven,
-  fetchDienstverlener,
-  verifyContactgegeven,
-} from './klantcontact-profieldienst.ts';
 import {
   sendBadRequest,
   sendBadRequestInvalidInput,
@@ -35,11 +30,14 @@ export async function handleVerifyContactgegeven(
     return sendBadRequest(res, 'value, type and code are required');
   }
 
-  const response = await verifyContactgegeven(res.locals.authProfileAndToken, {
-    type,
-    value,
-    code,
-  });
+  const response = await klantcontactBackend.verifyContactgegeven(
+    res.locals.authProfileAndToken,
+    {
+      type,
+      value,
+      code,
+    }
+  );
 
   return sendResponse(res, response);
 }
@@ -49,7 +47,8 @@ export async function handleFetchCommunicatievoorkeuren(
   res: ResponseAuthenticated
 ) {
   const communicatievoorkeurenResponse = await fetchCommunicatievoorkeuren(
-    res.locals.authProfileAndToken
+    res.locals.authProfileAndToken,
+    klantcontactBackend
   );
 
   return sendResponse(res, communicatievoorkeurenResponse);
@@ -68,7 +67,7 @@ export async function handleCreateContactgegeven(
     );
   }
 
-  const response = await createContactgegeven(
+  const response = await klantcontactBackend.createContactgegeven(
     res.locals.authProfileAndToken,
     type,
     value
@@ -87,7 +86,7 @@ export async function handleDeleteContactgegeven(
     return sendBadRequest(res, 'Contactgegeven ID is required');
   }
 
-  const response = await deleteContactgegeven(
+  const response = await klantcontactBackend.deleteContactgegeven(
     res.locals.authProfileAndToken,
     id
   );
@@ -100,7 +99,7 @@ export async function handleFetchDienstverlener(
   res: ResponseAuthenticated
 ) {
   const { naam } = req.params as { naam?: string };
-  const response = await fetchDienstverlener(
+  const response = await klantcontactBackend.fetchDienstverlener(
     res.locals.authProfileAndToken,
     naam
   );
