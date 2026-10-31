@@ -1,11 +1,18 @@
-import type { ProfielserviceBackend } from './klantcontact-backend-types.ts';
+import type {
+  GemeenteKlantcontactConfig,
+  KlantcontactBackend,
+  ProfielserviceBackend,
+} from './klantcontact-backend-types.ts';
 import {
   getMostRecentByContactgegevenType,
   getZaakKanaalVoorkeuren,
+  isValidZaakReferentie,
 } from './klantcontact-helpers.ts';
 import type {
   CommunicatievoorkeurenResponseFrontend,
   ContactgegevenType,
+  ZaakKanaalVoorkeurFrontend,
+  ZaakKanaalVoorkeurPayloadFrontend,
 } from './klantcontact-profieldienst-types.ts';
 import { featureToggle } from './klantcontact-service-config.ts';
 import {
@@ -104,5 +111,67 @@ export async function fetchCommunicatievoorkeuren(
     aangeslotenDiensten,
     standaardContactgegevens,
     zaakKanaalVoorkeuren: getZaakKanaalVoorkeuren(contactgegevens),
+  });
+}
+
+// Vervangt de voorkeur voor één zaak. Eerst het nieuwe adres aanmaken en dan pas de oude
+// verwijderen, zodat er nooit een moment is zonder zaakadres en een fout het oude adres laat staan.
+// Het nieuwe adres is ongeverifieerd (createContactgegeven stuurt een verificatiecode).
+// Contactgegevens (waarde) komen niet in foutmeldingen of logs.
+export async function setZaakKanaalVoorkeur(
+  authProfileAndToken: AuthProfileAndToken,
+  backend: KlantcontactBackend,
+  config: GemeenteKlantcontactConfig,
+  { zaakIdentificatie, kanaal, value }: ZaakKanaalVoorkeurPayloadFrontend
+): Promise<ApiResponse<ZaakKanaalVoorkeurFrontend>> {
+  if (!config.zaakVoorkeur.kanalen.includes(kanaal)) {
+    return apiErrorResult(
+      'Kanaal is niet toegestaan voor een zaakvoorkeur',
+      null
+    );
+  }
+
+  const referentie = config.zaakVoorkeur.referentie(zaakIdentificatie);
+
+  if (!referentie || !isValidZaakReferentie(referentie)) {
+    return apiErrorResult('Ongeldige zaakidentificatie', null);
+  }
+
+  const contactgegevens =
+    await backend.fetchContactgegevens(authProfileAndToken);
+
+  if (contactgegevens.status !== 'OK') {
+    return apiErrorResult('Ophalen van de contactgegevens mislukt', null);
+  }
+
+  // Er is geen uniciteit op referentie in OpenKlant: ook duplicaten worden opgeruimd.
+  const oudeContactgegevens = contactgegevens.content.filter(
+    (contactgegeven) => contactgegeven.referentie === referentie
+  );
+
+  const nieuwContactgegeven = await backend.createContactgegeven(
+    authProfileAndToken,
+    kanaal,
+    value,
+    { referentie, isDefault: false }
+  );
+
+  if (nieuwContactgegeven.status !== 'OK') {
+    return apiErrorResult('Aanmaken van de zaakvoorkeur mislukt', null);
+  }
+
+  const deleteResponses = await Promise.all(
+    oudeContactgegevens.map((oud) =>
+      backend.deleteContactgegeven(authProfileAndToken, oud.id)
+    )
+  );
+
+  if (deleteResponses.some((response) => response.status !== 'OK')) {
+    return apiErrorResult('Verwijderen van de oude zaakvoorkeur mislukt', null);
+  }
+
+  return apiSuccessResult({
+    zaakIdentificatie,
+    contactgegeven: nieuwContactgegeven.content,
   });
 }
