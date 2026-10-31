@@ -1,0 +1,7 @@
+{
+  "naam": "amsterdam",
+  "diensten": [
+    { "id": "parkeren", "beschrijving": "Parkeren" },
+    { "id": "afval", "beschrijving": "Afval" }
+  ]
+}
