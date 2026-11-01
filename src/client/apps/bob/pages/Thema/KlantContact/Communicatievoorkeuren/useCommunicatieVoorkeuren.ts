@@ -7,6 +7,8 @@ import type {
   ContactgegevenType,
   ContactgegevenFrontend,
   VerifyVerificationRequestResponse,
+  ZaakKanaalVoorkeurFrontend,
+  ZaakKanaalVoorkeurPayloadFrontend,
 } from '../../../../../../../server/services/klantcontact/klantcontact-profieldienst-types.ts';
 import {
   capitalizeFirstLetter,
@@ -26,27 +28,61 @@ import {
   themaConfig,
 } from '../KlantContact-thema-config.ts';
 
-type UpdateProps = {
-  contactgegeven: Partial<Omit<ContactgegevenFrontend, 'type'>> & {
-    type: ContactgegevenType;
-  };
-  appState: AppStateStore;
-};
 
-function updateCommunicatievoorkeurState({
-  contactgegeven,
-  appState,
-}: UpdateProps) {
-  appState.mergeAppState('KLANT_CONTACT', {
-    content: {
-      communicatievoorkeuren: {
-        standaardContactgegevens: {
-          [contactgegeven.type]: contactgegeven,
+type UpdateProps =
+  | {
+      contactgegeven: Partial<Omit<ContactgegevenFrontend, 'type'>> & {
+        type: ContactgegevenType;
+      };
+      appState: AppStateStore;
+      zaakKanaalVoorkeuren?: never;
+    }
+  | {
+      contactgegeven?: never;
+      appState: AppStateStore;
+      zaakKanaalVoorkeuren: ZaakKanaalVoorkeurFrontend[];
+    };
+
+function updateCommunicatievoorkeurState(props: UpdateProps) {
+  const { appState } = props;
+
+  if (props.zaakKanaalVoorkeuren !== undefined) {
+    const klantContact = appState.KLANT_CONTACT;
+
+    if (!klantContact?.content?.communicatievoorkeuren) {
+      return;
+    }
+
+    appState.setAppState({
+      KLANT_CONTACT: {
+        ...klantContact,
+        content: {
+          ...klantContact.content,
+          communicatievoorkeuren: {
+            ...klantContact.content.communicatievoorkeuren,
+            zaakKanaalVoorkeuren: props.zaakKanaalVoorkeuren,
+          },
         },
       },
-    },
-  });
+    });
+
+    return;
+  }
+
+  if (props.contactgegeven) {
+    appState.mergeAppState('KLANT_CONTACT', {
+      content: {
+        communicatievoorkeuren: {
+          standaardContactgegevens: {
+            [props.contactgegeven.type]: props.contactgegeven,
+          },
+        },
+      },
+    });
+  }
 }
+
+
 
 export function useSetCommunicatievoorkeur(
   onCallback: (
@@ -76,6 +112,104 @@ export function useSetCommunicatievoorkeur(
     }
   );
 }
+
+
+export function useSetZaakKanaalVoorkeur(
+  onCallback: (
+    contactgegeven: ContactgegevenFrontend | null,
+    success: boolean
+  ) => void
+) {
+  const appState = useAppStateStore();
+
+  return useBffApi<
+    ContactgegevenFrontend,
+    ZaakKanaalVoorkeurPayloadFrontend
+  >(BFFApiUrls.KLANTCONTACT_ZAAKVOORKEUR_SET, {
+    fetchImmediately: false,
+    sendRequest: async (url, init) => {
+      return sendFormPostRequest<ContactgegevenFrontend>(
+        url,
+        init
+      ).then((response) => {
+        if (
+          response.status === 'OK' &&
+          response.content?.id &&
+          init?.payload
+        ) {
+          const huidigeVoorkeuren =
+            appState.KLANT_CONTACT.content
+              ?.communicatievoorkeuren
+              ?.zaakKanaalVoorkeuren ?? [];
+
+          const zaakIdentificatie =
+            init.payload.zaakIdentificatie;
+
+          const nieuweVoorkeuren = [
+            ...huidigeVoorkeuren.filter(
+              (voorkeur: ZaakKanaalVoorkeurFrontend) =>
+                voorkeur.zaakIdentificatie !== zaakIdentificatie
+            ),
+            {
+              zaakIdentificatie,
+              contactgegeven: response.content,
+            },
+          ];
+
+          updateCommunicatievoorkeurState({
+            appState,
+            zaakKanaalVoorkeuren: nieuweVoorkeuren,
+          });
+        }
+
+        onCallback(
+          response.content ?? null,
+          response.status === 'OK'
+        );
+
+        return response;
+      });
+    },
+  });
+}
+
+
+export function useVerwijderZaakKanaalVoorkeur(
+  zaakIdentificatie: string
+) {
+  const appState = useAppStateStore();
+
+  return function handleDelete() {
+    return sendFormPostRequest<null>(
+      BFFApiUrls.KLANTCONTACT_ZAAKVOORKEUR_DELETE,
+      {
+        payload: {
+          zaakIdentificatie,
+        },
+      }
+    ).then((response) => {
+      if (response.status === 'OK') {
+        const huidigeVoorkeuren =
+          appState.KLANT_CONTACT.content
+            ?.communicatievoorkeuren
+            ?.zaakKanaalVoorkeuren ?? [];
+
+        const nieuweVoorkeuren = huidigeVoorkeuren.filter(
+          (voorkeur: ZaakKanaalVoorkeurFrontend) =>
+            voorkeur.zaakIdentificatie !== zaakIdentificatie
+        );
+
+        updateCommunicatievoorkeurState({
+          appState,
+          zaakKanaalVoorkeuren: nieuweVoorkeuren,
+        });
+      }
+
+      return response;
+    });
+  };
+}
+
 
 export function useVerifyCommunicatievoorkeur(
   onCallback: (verified: boolean) => void
