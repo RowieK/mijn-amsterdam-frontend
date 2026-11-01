@@ -6,6 +6,7 @@ import { getFromEnv } from '../../helpers/env.ts';
 export const featureToggle = {
   afspraken: isEnabled('KLANT_CONTACT.afspraken'),
   communicatievoorkeuren: isEnabled('KLANT_CONTACT.communicatievoorkeuren'),
+  zaakvoorkeuren: isEnabled('KLANT_CONTACT.zaakvoorkeuren'),
 };
 
 const BASE_ROUTE = '/services/klantcontact';
@@ -16,6 +17,7 @@ export const routes = {
   CONTACTGEGEVEN_CREATE: `${BASE_ROUTE}/contactgegeven/create`,
   CONTACTGEGEVEN_DELETE: `${BASE_ROUTE}/contactgegeven/delete`,
   ZAAKVOORKEUR_SET: `${BASE_ROUTE}/zaakvoorkeur/set`,
+  ZAAKVOORKEUR_DELETE: `${BASE_ROUTE}/zaakvoorkeur/delete`,
 } as const;
 
 export const salesforceDataRequestConfig = {

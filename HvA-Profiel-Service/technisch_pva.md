@@ -239,6 +239,12 @@ Validatie in `handleSetZaakKanaalVoorkeur`:
 - De zaak hoort bij de ingelogde gebruiker (`zaakIsVanGebruiker` van de backend; de implementatie verschilt per gemeente). Anders kan iemand het kanaal voor andermans zaak omleiden.
 - Het adres is geverifieerd, of is gelijk aan een al geverifieerd standaardadres (afhankelijk van open punt 3).
 
+**Stand van WP5.**
+
+- Toggle `KLANT_CONTACT.zaakvoorkeuren` (aan buiten productie) zit op een eigen sub-router in `klantcontact-router.ts`. Staat hij uit, dan zijn `ZAAKVOORKEUR_SET` en `ZAAKVOORKEUR_DELETE` niet bereikbaar; de bestaande contactgegeven-routes blijven werken.
+- `zaakIsVanGebruiker` zit in `KlantcontactBackend`. De `profielservice`-adapter kan het eigenaarschap nog niet vaststellen (de profielservice kent geen zaken en er is geen OpenZaak-service, zie WP8) en geeft daarom een foutresultaat (503). `handleSetZaakKanaalVoorkeur` weigert dan: **het zetten van een zaakvoorkeur werkt pas als WP8 een echte controle levert.** Dit is bewust fail closed. De controle zelf is dan een OpenZaak-aanroep (zie "Uitkomst API-specificaties").
+- `handleDeleteZaakKanaalVoorkeur` controleert het eigenaarschap niet. Verwijderen raakt alleen adressen in het eigen profiel van de klant, dus er valt geen andermans zaak mee om te leiden. `deleteZaakKanaalVoorkeur` ruimt alle adressen met die `referentie` op en is een succes als er niets te verwijderen valt.
+
 ### WP6: Mock-server
 
 Nieuwe route in `src/mocks-server/routes/` voor `/profielservice` (`/partij`, `/dienstverlener/*`, `/contactgegeven`, verificatie), met contactgegevens zonder en met `referentie`. Nu bestaat er geen mock. Fixtures blijven gescheiden van testdata.

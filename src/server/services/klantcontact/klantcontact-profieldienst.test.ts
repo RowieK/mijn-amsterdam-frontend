@@ -182,6 +182,23 @@ describe.each([
       ]);
     });
   });
+
+  describe('zaakIsVanGebruiker', () => {
+    // De profielservice kent geen zaken en er is nog geen OpenZaak-controle (plan WP8).
+    // Zonder controle moet de adapter weigeren, en geen HTTP-aanroep doen.
+    test('weigert zolang het eigenaarschap niet vast te stellen is (fail closed)', async () => {
+      const response = await backend.zaakIsVanGebruiker(
+        authProfileAndToken,
+        'Z-24-2238078'
+      );
+
+      expect(response).toMatchObject({
+        status: 'ERROR',
+        content: null,
+        code: 503,
+      });
+    });
+  });
 });
 
 describe('getAmsterdamKlantcontactConfig', () => {

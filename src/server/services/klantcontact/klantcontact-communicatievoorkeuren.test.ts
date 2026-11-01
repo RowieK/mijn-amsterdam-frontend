@@ -2,7 +2,10 @@ import type {
   GemeenteKlantcontactConfig,
   KlantcontactBackend,
 } from './klantcontact-backend-types.ts';
-import { setZaakKanaalVoorkeur } from './klantcontact-communicatievoorkeuren.ts';
+import {
+  deleteZaakKanaalVoorkeur,
+  setZaakKanaalVoorkeur,
+} from './klantcontact-communicatievoorkeuren.ts';
 import {
   transformContactgegevenSource,
   zaakIdentificatieAlsReferentie,
@@ -60,6 +63,7 @@ function getBackend(overrides: Partial<KlantcontactBackend> = {}) {
       .mockResolvedValue(apiSuccessResult(nieuwContactgegeven)),
     deleteContactgegeven: vi.fn().mockResolvedValue(apiSuccessResult(null)),
     verifyContactgegeven: vi.fn(),
+    zaakIsVanGebruiker: vi.fn(),
     ...overrides,
   } satisfies KlantcontactBackend;
 }
@@ -276,5 +280,179 @@ describe('setZaakKanaalVoorkeur', () => {
     );
 
     expect(result.content?.contactgegeven.isVerified).toBe(false);
+  });
+});
+
+describe('deleteZaakKanaalVoorkeur', () => {
+  const authProfileAndToken = getAuthProfileAndToken();
+
+  test('verwijdert het zaakadres en laat andere adressen staan', async () => {
+    const backend = getBackend({
+      fetchContactgegevens: vi.fn().mockResolvedValue(
+        apiSuccessResult([
+          getContactgegeven({ id: 'standaard' }),
+          getContactgegeven({ id: 'andere-zaak', referentie: 'Z-24-1' }),
+          getContactgegeven({
+            id: 'zaakadres',
+            referentie: ZAAK,
+            isDefault: false,
+          }),
+        ])
+      ),
+    });
+
+    const result = await deleteZaakKanaalVoorkeur(
+      authProfileAndToken,
+      backend,
+      config,
+      ZAAK
+    );
+
+    expect(result).toEqual(apiSuccessResult(null));
+    expect(backend.deleteContactgegeven).toHaveBeenCalledTimes(1);
+    expect(backend.deleteContactgegeven).toHaveBeenCalledWith(
+      authProfileAndToken,
+      'zaakadres'
+    );
+    expect(backend.createContactgegeven).not.toHaveBeenCalled();
+  });
+
+  test('verwijdert alle adressen met dezelfde referentie (duplicaten)', async () => {
+    const backend = getBackend({
+      fetchContactgegevens: vi.fn().mockResolvedValue(
+        apiSuccessResult([
+          getContactgegeven({ id: 'oud-1', referentie: ZAAK }),
+          getContactgegeven({
+            id: 'oud-2',
+            type: 'Telefoonnummer',
+            referentie: ZAAK,
+          }),
+        ])
+      ),
+    });
+
+    const result = await deleteZaakKanaalVoorkeur(
+      authProfileAndToken,
+      backend,
+      config,
+      ZAAK
+    );
+
+    expect(result.status).toBe('OK');
+    expect(backend.deleteContactgegeven).toHaveBeenCalledTimes(2);
+    expect(backend.deleteContactgegeven).toHaveBeenCalledWith(
+      authProfileAndToken,
+      'oud-1'
+    );
+    expect(backend.deleteContactgegeven).toHaveBeenCalledWith(
+      authProfileAndToken,
+      'oud-2'
+    );
+  });
+
+  test('is een succes zonder delete als er geen zaakadres is', async () => {
+    const backend = getBackend({
+      fetchContactgegevens: vi
+        .fn()
+        .mockResolvedValue(
+          apiSuccessResult([getContactgegeven({ id: 'standaard' })])
+        ),
+    });
+
+    const result = await deleteZaakKanaalVoorkeur(
+      authProfileAndToken,
+      backend,
+      config,
+      ZAAK
+    );
+
+    expect(result).toEqual(apiSuccessResult(null));
+    expect(backend.deleteContactgegeven).not.toHaveBeenCalled();
+  });
+
+  test('breekt af als de profielresponse faalt: niets wordt verwijderd', async () => {
+    const backend = getBackend({
+      fetchContactgegevens: vi
+        .fn()
+        .mockResolvedValue(apiErrorResult('Profiel ophalen mislukt', null)),
+    });
+
+    const result = await deleteZaakKanaalVoorkeur(
+      authProfileAndToken,
+      backend,
+      config,
+      ZAAK
+    );
+
+    expect(result.status).toBe('ERROR');
+    expect(backend.deleteContactgegeven).not.toHaveBeenCalled();
+  });
+
+  test('geeft een fout als een delete faalt', async () => {
+    const backend = getBackend({
+      fetchContactgegevens: vi
+        .fn()
+        .mockResolvedValue(
+          apiSuccessResult([getContactgegeven({ id: 'oud', referentie: ZAAK })])
+        ),
+      deleteContactgegeven: vi
+        .fn()
+        .mockResolvedValue(apiErrorResult('Verwijderen mislukt', null)),
+    });
+
+    const result = await deleteZaakKanaalVoorkeur(
+      authProfileAndToken,
+      backend,
+      config,
+      ZAAK
+    );
+
+    expect(result.status).toBe('ERROR');
+  });
+
+  test('geeft een fout zonder backend-aanroepen bij een ongeldige zaakidentificatie', async () => {
+    const backend = getBackend();
+
+    const result = await deleteZaakKanaalVoorkeur(
+      authProfileAndToken,
+      backend,
+      config,
+      'Z/24/1'
+    );
+
+    expect(result.status).toBe('ERROR');
+    expect(backend.fetchContactgegevens).not.toHaveBeenCalled();
+    expect(backend.deleteContactgegeven).not.toHaveBeenCalled();
+  });
+
+  test('gebruikt de referentiestrategie van de gemeente-config', async () => {
+    const gemeenteConfig: GemeenteKlantcontactConfig = {
+      ...config,
+      zaakVoorkeur: {
+        ...config.zaakVoorkeur,
+        referentie: (zaakIdentificatie) =>
+          zaakIdentificatie.replaceAll('/', '-'),
+      },
+    };
+    const backend = getBackend({
+      fetchContactgegevens: vi.fn().mockResolvedValue(
+        apiSuccessResult([
+          getContactgegeven({ id: 'zaakadres', referentie: 'Z-24-1' }),
+        ])
+      ),
+    });
+
+    const result = await deleteZaakKanaalVoorkeur(
+      authProfileAndToken,
+      backend,
+      gemeenteConfig,
+      'Z/24/1'
+    );
+
+    expect(result.status).toBe('OK');
+    expect(backend.deleteContactgegeven).toHaveBeenCalledWith(
+      authProfileAndToken,
+      'zaakadres'
+    );
   });
 });
