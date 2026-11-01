@@ -5,6 +5,7 @@ import {
   handleCreateContactgegeven,
   handleDeleteContactgegeven,
   handleSetZaakKanaalVoorkeur,
+  handleDeleteZaakKanaalVoorkeur,
 } from './klantcontact-route-handlers.ts';
 import { routes } from './klantcontact-service-config.ts';
 import { createBFFRouter } from '../../routing/route-helpers.ts';
@@ -16,6 +17,10 @@ routerProtected.post(routes.CONTACTGEGEVEN_VERIFY, handleVerifyContactgegeven);
 routerProtected.post(routes.CONTACTGEGEVEN_CREATE, handleCreateContactgegeven);
 routerProtected.post(routes.CONTACTGEGEVEN_DELETE, handleDeleteContactgegeven);
 routerProtected.post(routes.ZAAKVOORKEUR_SET, handleSetZaakKanaalVoorkeur);
+routerProtected.post(
+  routes.ZAAKVOORKEUR_DELETE,
+  handleDeleteZaakKanaalVoorkeur
+);
 
 export const klantcontactRouter = {
   protected: routerProtected,

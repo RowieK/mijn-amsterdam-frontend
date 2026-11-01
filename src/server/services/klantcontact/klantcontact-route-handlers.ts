@@ -1,3 +1,4 @@
+import { HttpStatusCode } from 'axios';
 import createDebugger from 'debug';
 import type { Request } from 'express';
 
@@ -12,7 +13,10 @@ import {
   setZaakKanaalVoorkeur,
 } from './klantcontact-communicatievoorkeuren.ts';
 import { isValidZaakReferentie } from './klantcontact-helpers.ts';
+import { featureToggle } from './klantcontact-service-config.ts';
+import { apiErrorResult } from '../../../universal/helpers/api.ts';
 import {
+  send404,
   sendBadRequest,
   sendBadRequestInvalidInput,
   sendInternalServerError,
@@ -118,6 +122,10 @@ export async function handleSetZaakKanaalVoorkeur(
   req: Request,
   res: ResponseAuthenticated
 ) {
+  if (!featureToggle.zaakvoorkeuren) {
+    return send404(res);
+  }
+
   const { zaakIdentificatie, kanaal, value } = req.body ?? {};
 
   if (!klantcontactConfig.zaakVoorkeur.kanalen.includes(kanaal)) {
@@ -169,6 +177,52 @@ export async function handleSetZaakKanaalVoorkeur(
     klantcontactBackend,
     klantcontactConfig,
     { zaakIdentificatie, kanaal, value }
+  );
+
+  return sendResponse(res, response);
+}
+
+// Verwijdert de voorkeur voor één zaak. Alleen een zaakadres (met referentie) van de ingelogde gebruiker
+// kan hier worden verwijderd, nooit het standaardadres of een adres van een ander.
+export async function handleDeleteZaakKanaalVoorkeur(
+  req: Request,
+  res: ResponseAuthenticated
+) {
+  if (!featureToggle.zaakvoorkeuren) {
+    return send404(res);
+  }
+
+  const { id } = req.body ?? {};
+
+  if (!id || typeof id !== 'string') {
+    return sendBadRequest(res, 'id is required');
+  }
+
+  const contactgegevens = await klantcontactBackend.fetchContactgegevens(
+    res.locals.authProfileAndToken
+  );
+
+  if (contactgegevens.status !== 'OK') {
+    return sendInternalServerError(
+      res,
+      'Ophalen van de contactgegevens mislukt'
+    );
+  }
+
+  const isZaakadresVanGebruiker = contactgegevens.content.some(
+    (contactgegeven) => contactgegeven.id === id && !!contactgegeven.referentie
+  );
+
+  if (!isZaakadresVanGebruiker) {
+    return sendResponse(
+      res,
+      apiErrorResult('Forbidden', null, HttpStatusCode.Forbidden)
+    );
+  }
+
+  const response = await klantcontactBackend.deleteContactgegeven(
+    res.locals.authProfileAndToken,
+    id
   );
 
   return sendResponse(res, response);
