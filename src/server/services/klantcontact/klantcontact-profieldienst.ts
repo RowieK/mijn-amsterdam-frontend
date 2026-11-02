@@ -168,17 +168,27 @@ export async function verifyContactgegeven(
   authProfileAndToken: AuthProfileAndToken,
   { value, code, type }: VerifyVerificationRequestProps
 ) {
-  // TODO: based on type, we might want to send the verification request to a different endpoint or with a different payload structure.
-  // For now we only support email verification, but the API supports phone verification as well, and in the future we might want to add more types.
+// The verification payload supports both email and phone numbers.
+// TODO: Confirm and configure the correct endpoint for SMS verification.
   const identificatieType = getIdentificatieType(
     authProfileAndToken.profile.profileType
   );
-  const data: VerifyVerificationRequestPayload = {
-    email: value,
-    identificatieNummer: authProfileAndToken.profile.id,
-    identificatieType,
-    verificatieCode: code,
-  };
+  const verificationData = {
+  identificatieNummer: authProfileAndToken.profile.id,
+  identificatieType,
+  verificatieCode: code,
+};
+
+const data: VerifyVerificationRequestPayload =
+  type === 'Telefoonnummer'
+    ? {
+        ...verificationData,
+        telefoonnummer: normalizeDutchMobileNumber(value),
+      }
+    : {
+        ...verificationData,
+        email: value,
+      };
 
   const apiConfig = getCustomApiConfig(profieldienstRequestConfig, {
     method: 'POST',
