@@ -70,10 +70,7 @@ export async function fetchCommunicatievoorkeuren(
 
   const standaardContactgegevens = {
     [ContactgegevenTypes.Email]: email,
-    [ContactgegevenTypes.Telefoonnummer]: {
-      ...phone,
-      disabled: true,
-    },
+    [ContactgegevenTypes.Telefoonnummer]: phone,
     [ContactgegevenTypes.ApplicatieId]: app,
     [ContactgegevenTypes.Postadres]: {
       id: null,

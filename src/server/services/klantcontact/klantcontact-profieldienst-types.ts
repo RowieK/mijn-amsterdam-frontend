@@ -103,12 +103,19 @@ export type DeleteContactgegevenResponseFrontend = {
   success: boolean;
 };
 
-export type VerifyVerificationRequestPayload = {
-  email: string;
+type VerificationRequestBase = {
   identificatieNummer: string;
   identificatieType: IdentificatieType;
   verificatieCode: string;
 };
+
+export type VerifyVerificationRequestPayload =
+  | (VerificationRequestBase & {
+      email: string;
+    })
+  | (VerificationRequestBase & {
+      telefoonnummer: string;
+    });
 
 export type VerifyVerificationRequestResponse = {
   verified: boolean;

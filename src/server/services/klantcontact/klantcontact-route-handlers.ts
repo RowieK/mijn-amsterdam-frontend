@@ -1,4 +1,4 @@
-import createDebugger from 'debug';
+
 import type { Request } from 'express';
 
 import {
@@ -10,6 +10,7 @@ import {
   createContactgegeven,
   deleteContactgegeven,
   fetchDienstverlener,
+  normalizeDutchMobileNumber,
   verifyContactgegeven,
 } from './klantcontact-profieldienst.ts';
 import {
@@ -19,25 +20,46 @@ import {
   type ResponseAuthenticated,
 } from '../../routing/route-helpers.ts';
 
-const debugContactRequestData = createDebugger(
-  'contact-api:route-request-data'
-);
 
 export async function handleVerifyContactgegeven(
   req: Request,
   res: ResponseAuthenticated
 ) {
-  debugContactRequestData(req.body);
-
   const { value, code, type } = req.body;
 
-  if (!value || !code || type !== ContactgegevenTypes.Email) {
-    return sendBadRequest(res, 'value, type and code are required');
+  const isSupportedType =
+    type === ContactgegevenTypes.Email ||
+    type === ContactgegevenTypes.Telefoonnummer;
+
+  if (
+    typeof value !== 'string' ||
+    !value.trim() ||
+    typeof code !== 'string' ||
+    !code.trim() ||
+    !isSupportedType
+  ) {
+    return sendBadRequest(
+      res,
+      'A valid value, type and code are required'
+    );
+  }
+
+  let normalizedValue = value;
+
+  if (type === ContactgegevenTypes.Telefoonnummer) {
+    try {
+      normalizedValue = normalizeDutchMobileNumber(value);
+    } catch {
+      return sendBadRequest(
+        res,
+        'Voer een geldig Nederlands mobiel telefoonnummer in'
+      );
+    }
   }
 
   const response = await verifyContactgegeven(res.locals.authProfileAndToken, {
     type,
-    value,
+    value: normalizedValue,
     code,
   });
 
@@ -61,11 +83,26 @@ export async function handleCreateContactgegeven(
 ) {
   const { value, type } = req.body;
 
-  if (!ContactgegevenTypeValues.includes(type) || !value) {
+  if (
+    !ContactgegevenTypeValues.includes(type) ||
+    typeof value !== 'string' ||
+    !value.trim()
+  ) {
     return sendBadRequestInvalidInput(
       res,
-      `payloadType ${type} is not supported`
+      `payloadType ${type} is not supported or value is invalid`
     );
+  }
+
+  if (type === ContactgegevenTypes.Telefoonnummer) {
+    try {
+      normalizeDutchMobileNumber(value);
+    } catch {
+      return sendBadRequest(
+        res,
+        'Voer een geldig Nederlands mobiel telefoonnummer in'
+      );
+    }
   }
 
   const response = await createContactgegeven(

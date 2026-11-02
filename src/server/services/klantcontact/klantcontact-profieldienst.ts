@@ -20,6 +20,24 @@ import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
 import { getCustomApiConfig } from '../../helpers/source-api-helpers.ts';
 import { requestData } from '../../helpers/source-api-request.ts';
 
+export function normalizeDutchMobileNumber(value: string): string {
+  const normalized = value.replace(/[\s()-]/g, '');
+
+  let phoneNumber = normalized;
+
+  if (/^06\d{8}$/.test(phoneNumber)) {
+    phoneNumber = `+31${phoneNumber.slice(1)}`;
+  } else if (/^00316\d{8}$/.test(phoneNumber)) {
+    phoneNumber = `+${phoneNumber.slice(2)}`;
+  }
+
+  if (!/^\+316\d{8}$/.test(phoneNumber)) {
+    throw new Error('Ongeldig Nederlands mobiel telefoonnummer');
+  }
+
+  return phoneNumber;
+}
+
 const DEFAULT_DIENSTVERLENER = 'amsterdam';
 
 export async function fetchProfiel(
@@ -91,7 +109,10 @@ export async function createContactgegeven(
     identificatieType,
     identificatieNummer: authProfileAndToken.profile.id,
     type: contactgegevenType,
-    waarde: contactgegevenWaarde,
+    waarde:
+      contactgegevenType === 'Telefoonnummer'
+        ? normalizeDutchMobileNumber(contactgegevenWaarde)
+        : contactgegevenWaarde,
     isDefault: true,
   };
 
