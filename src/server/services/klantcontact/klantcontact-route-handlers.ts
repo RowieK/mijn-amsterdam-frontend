@@ -1,30 +1,40 @@
-
+import { HttpStatusCode } from 'axios';
+import createDebugger from 'debug';
 import type { Request } from 'express';
 
 import {
+  klantcontactBackend,
+  klantcontactConfig,
+} from './klantcontact-backend.ts';
+import {
   ContactgegevenTypes,
   ContactgegevenTypeValues,
+  deleteZaakKanaalVoorkeur,
   fetchCommunicatievoorkeuren,
+  setZaakKanaalVoorkeur,
 } from './klantcontact-communicatievoorkeuren.ts';
-import {
-  createContactgegeven,
-  deleteContactgegeven,
-  fetchDienstverlener,
-  normalizeDutchMobileNumber,
-  verifyContactgegeven,
-} from './klantcontact-profieldienst.ts';
+import { getValidZaakReferentie } from './klantcontact-helpers.ts';
+import { normalizeDutchMobileNumber } from './klantcontact-profieldienst.ts';
+import { apiErrorResult } from '../../../universal/helpers/api.ts';
 import {
   sendBadRequest,
   sendBadRequestInvalidInput,
+  sendInternalServerError,
   sendResponse,
+  sendServiceUnavailable,
   type ResponseAuthenticated,
 } from '../../routing/route-helpers.ts';
 
+const debugContactRequestData = createDebugger(
+  'contact-api:route-request-data'
+);
 
 export async function handleVerifyContactgegeven(
   req: Request,
   res: ResponseAuthenticated
 ) {
+  debugContactRequestData(req.body);
+
   const { value, code, type } = req.body;
 
   const isSupportedType =
@@ -38,10 +48,7 @@ export async function handleVerifyContactgegeven(
     !code.trim() ||
     !isSupportedType
   ) {
-    return sendBadRequest(
-      res,
-      'A valid value, type and code are required'
-    );
+    return sendBadRequest(res, 'A valid value, type and code are required');
   }
 
   let normalizedValue = value;
@@ -57,11 +64,14 @@ export async function handleVerifyContactgegeven(
     }
   }
 
-  const response = await verifyContactgegeven(res.locals.authProfileAndToken, {
-    type,
-    value: normalizedValue,
-    code,
-  });
+  const response = await klantcontactBackend.verifyContactgegeven(
+    res.locals.authProfileAndToken,
+    {
+      type,
+      value: normalizedValue,
+      code,
+    }
+  );
 
   return sendResponse(res, response);
 }
@@ -71,7 +81,8 @@ export async function handleFetchCommunicatievoorkeuren(
   res: ResponseAuthenticated
 ) {
   const communicatievoorkeurenResponse = await fetchCommunicatievoorkeuren(
-    res.locals.authProfileAndToken
+    res.locals.authProfileAndToken,
+    klantcontactBackend
   );
 
   return sendResponse(res, communicatievoorkeurenResponse);
@@ -105,7 +116,7 @@ export async function handleCreateContactgegeven(
     }
   }
 
-  const response = await createContactgegeven(
+  const response = await klantcontactBackend.createContactgegeven(
     res.locals.authProfileAndToken,
     type,
     value
@@ -124,7 +135,7 @@ export async function handleDeleteContactgegeven(
     return sendBadRequest(res, 'Contactgegeven ID is required');
   }
 
-  const response = await deleteContactgegeven(
+  const response = await klantcontactBackend.deleteContactgegeven(
     res.locals.authProfileAndToken,
     id
   );
@@ -137,9 +148,110 @@ export async function handleFetchDienstverlener(
   res: ResponseAuthenticated
 ) {
   const { naam } = req.params as { naam?: string };
-  const response = await fetchDienstverlener(
+  const response = await klantcontactBackend.fetchDienstverlener(
     res.locals.authProfileAndToken,
     naam
   );
+  return sendResponse(res, response);
+}
+
+// Zet de voorkeur voor één zaak. Alleen een geverifieerd adres van de klant zelf mag gekozen worden,
+// en alleen voor een zaak van de klant zelf (anders kan iemand het kanaal van andermans zaak omleiden).
+// Kan het eigenaarschap niet worden vastgesteld, dan weigeren we ook.
+// Contactgegevens (value) komen niet in foutmeldingen of logs.
+export async function handleSetZaakKanaalVoorkeur(
+  req: Request,
+  res: ResponseAuthenticated
+) {
+  const { zaakIdentificatie, kanaal, value } = req.body ?? {};
+
+  if (!klantcontactConfig.zaakVoorkeur.kanalen.includes(kanaal)) {
+    return sendBadRequest(res, 'kanaal is not supported for a zaakvoorkeur');
+  }
+
+  if (!value || typeof value !== 'string') {
+    return sendBadRequest(res, 'value is required');
+  }
+
+  if (!getValidZaakReferentie(klantcontactConfig, zaakIdentificatie)) {
+    return sendBadRequest(res, 'zaakIdentificatie is not valid');
+  }
+
+  const zaakIsVanGebruiker = await klantcontactBackend.zaakIsVanGebruiker(
+    res.locals.authProfileAndToken,
+    zaakIdentificatie
+  );
+
+  if (zaakIsVanGebruiker.status !== 'OK') {
+    return sendServiceUnavailable(res, 'Controleren van de zaak mislukt');
+  }
+
+  if (!zaakIsVanGebruiker.content) {
+    return sendResponse(
+      res,
+      apiErrorResult(
+        'Forbidden: de zaak hoort niet bij de ingelogde gebruiker',
+        null,
+        HttpStatusCode.Forbidden
+      )
+    );
+  }
+
+  const contactgegevens = await klantcontactBackend.fetchContactgegevens(
+    res.locals.authProfileAndToken
+  );
+
+  if (contactgegevens.status !== 'OK') {
+    return sendInternalServerError(
+      res,
+      'Ophalen van de contactgegevens mislukt'
+    );
+  }
+
+  // Een zaakadres (met referentie) telt niet: de klant kiest uit zijn eigen, al geverifieerde adressen.
+  const isGeverifieerdAdresVanKlant = contactgegevens.content.some(
+    (contactgegeven) =>
+      !contactgegeven.referentie &&
+      contactgegeven.type === kanaal &&
+      contactgegeven.waarde === value &&
+      contactgegeven.isGeverifieerd
+  );
+
+  if (!isGeverifieerdAdresVanKlant) {
+    return sendBadRequest(
+      res,
+      'Only a verified contactgegeven of the user can be chosen'
+    );
+  }
+
+  const response = await setZaakKanaalVoorkeur(
+    res.locals.authProfileAndToken,
+    klantcontactBackend,
+    klantcontactConfig,
+    { zaakIdentificatie, kanaal, value }
+  );
+
+  return sendResponse(res, response);
+}
+
+// Verwijdert de voorkeur voor één zaak. Dit raakt alleen adressen in het eigen profiel van de klant,
+// dus anders dan bij het zetten is een controle op eigenaarschap van de zaak niet nodig.
+export async function handleDeleteZaakKanaalVoorkeur(
+  req: Request,
+  res: ResponseAuthenticated
+) {
+  const { zaakIdentificatie } = req.body ?? {};
+
+  if (!getValidZaakReferentie(klantcontactConfig, zaakIdentificatie)) {
+    return sendBadRequest(res, 'zaakIdentificatie is not valid');
+  }
+
+  const response = await deleteZaakKanaalVoorkeur(
+    res.locals.authProfileAndToken,
+    klantcontactBackend,
+    klantcontactConfig,
+    zaakIdentificatie
+  );
+
   return sendResponse(res, response);
 }

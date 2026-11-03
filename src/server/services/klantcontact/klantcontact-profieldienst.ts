@@ -1,5 +1,11 @@
 import { HttpStatusCode } from 'axios';
 
+import type {
+  CreateContactgegevenOptions,
+  GemeenteKlantcontactConfig,
+  ProfielserviceBackend,
+  VerifyVerificationRequestProps,
+} from './klantcontact-backend-types.ts';
 import {
   getIdentificatieType,
   transformContactgegevenSource,
@@ -14,8 +20,7 @@ import type {
   VerifyVerificationRequestResponse,
 } from './klantcontact-profieldienst-types.ts';
 import type { DienstverlenerSource } from './klantcontact-profieldienst-types.ts';
-import { profieldienstRequestConfig } from './klantcontact-service-config.ts';
-import { type ApiResponse } from '../../../universal/helpers/api.ts';
+import { apiErrorResult, apiSuccessResult, type ApiResponse, } from '../../../universal/helpers/api.ts';
 import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
 import { getCustomApiConfig } from '../../helpers/source-api-helpers.ts';
 import { requestData } from '../../helpers/source-api-request.ts';
@@ -38,16 +43,33 @@ export function normalizeDutchMobileNumber(value: string): string {
   return phoneNumber;
 }
 
+// De adapter geeft een foutresultaat in plaats van een exception, zodat een ongeldig nummer
+// (bijvoorbeeld een bestaand vast nummer dat via een zaakvoorkeur wordt gekozen) geen 500 oplevert.
+function normalizeTelefoonnummer(value: string): ApiResponse<string> {
+  try {
+    return apiSuccessResult(normalizeDutchMobileNumber(value));
+  } catch {
+    return apiErrorResult(
+      'Ongeldig Nederlands mobiel telefoonnummer',
+      null,
+      HttpStatusCode.BadRequest
+    );
+  }
+}
+
 const DEFAULT_DIENSTVERLENER = 'amsterdam';
 
-export async function fetchProfiel(
+type ProfielserviceConfig = GemeenteKlantcontactConfig['profielservice'];
+
+async function fetchProfiel(
+  profielserviceConfig: ProfielserviceConfig,
   authProfileAndToken: AuthProfileAndToken
 ): Promise<ApiResponse<ContactProfieldienstResponseSource>> {
   const identificatieType = getIdentificatieType(
     authProfileAndToken.profile.profileType
   );
 
-  const apiConfig = getCustomApiConfig(profieldienstRequestConfig, {
+  const apiConfig = getCustomApiConfig(profielserviceConfig, {
     method: 'POST',
     data: {
       identificatieType,
@@ -71,11 +93,25 @@ export async function fetchProfiel(
   return response;
 }
 
-export async function fetchDienstverlener(
+async function fetchContactgegevens(
+  profielserviceConfig: ProfielserviceConfig,
+  authProfileAndToken: AuthProfileAndToken
+): Promise<ApiResponse<ContactgegevenSource[]>> {
+  const profiel = await fetchProfiel(profielserviceConfig, authProfileAndToken);
+
+  if (profiel.status !== 'OK') {
+    return profiel;
+  }
+
+  return apiSuccessResult(profiel.content.contactgegevens);
+}
+
+async function fetchDienstverlener(
+  profielserviceConfig: ProfielserviceConfig,
   authProfileAndToken: AuthProfileAndToken,
   dienstverlenerNaam: string = DEFAULT_DIENSTVERLENER
 ): Promise<ApiResponse<DienstverlenerSource>> {
-  const apiConfig = getCustomApiConfig(profieldienstRequestConfig, {
+  const apiConfig = getCustomApiConfig(profielserviceConfig, {
     method: 'GET',
     formatUrl({ url }) {
       return `${url}/dienstverlener/${dienstverlenerNaam}`;
@@ -97,11 +133,22 @@ export async function fetchDienstverlener(
 
 // This api call also sends a verification request to the given phone or email.
 // The data will be added but isGeverifieerd will be false until the user verifies with the received code.
-export async function createContactgegeven(
+async function createContactgegeven(
+  profielserviceConfig: ProfielserviceConfig,
   authProfileAndToken: AuthProfileAndToken,
   contactgegevenType: ContactgegevenType,
-  contactgegevenWaarde: string
+  contactgegevenWaarde: string,
+  { referentie, isDefault = true }: CreateContactgegevenOptions = {}
 ): Promise<ApiResponse<ContactgegevenFrontend>> {
+  const waarde =
+    contactgegevenType === 'Telefoonnummer'
+      ? normalizeTelefoonnummer(contactgegevenWaarde)
+      : apiSuccessResult(contactgegevenWaarde);
+
+  if (waarde.status !== 'OK') {
+    return waarde;
+  }
+
   const identificatieType = getIdentificatieType(
     authProfileAndToken.profile.profileType
   );
@@ -109,14 +156,12 @@ export async function createContactgegeven(
     identificatieType,
     identificatieNummer: authProfileAndToken.profile.id,
     type: contactgegevenType,
-    waarde:
-      contactgegevenType === 'Telefoonnummer'
-        ? normalizeDutchMobileNumber(contactgegevenWaarde)
-        : contactgegevenWaarde,
-    isDefault: true,
+    waarde: waarde.content,
+    isDefault,
+    ...(referentie && { referentie }),
   };
 
-  const apiConfig = getCustomApiConfig(profieldienstRequestConfig, {
+  const apiConfig = getCustomApiConfig(profielserviceConfig, {
     method: 'POST',
     data: payload,
     headers: {
@@ -135,7 +180,8 @@ export async function createContactgegeven(
   return requestData<ContactgegevenFrontend>(apiConfig);
 }
 
-export async function deleteContactgegeven(
+async function deleteContactgegeven(
+  profielserviceConfig: ProfielserviceConfig,
   authProfileAndToken: AuthProfileAndToken,
   contactgegevenId: ContactgegevenSource['id']
 ): Promise<ApiResponse<null>> {
@@ -143,7 +189,7 @@ export async function deleteContactgegeven(
     authProfileAndToken.profile.profileType
   );
 
-  const apiConfig = getCustomApiConfig(profieldienstRequestConfig, {
+  const apiConfig = getCustomApiConfig(profielserviceConfig, {
     method: 'DELETE',
     data: {
       identificatieType,
@@ -158,39 +204,37 @@ export async function deleteContactgegeven(
   return requestData<null>(apiConfig);
 }
 
-type VerifyVerificationRequestProps = {
-  value: string;
-  code: string;
-  type: ContactgegevenType;
-};
-
-export async function verifyContactgegeven(
+async function verifyContactgegeven(
+  profielserviceConfig: ProfielserviceConfig,
   authProfileAndToken: AuthProfileAndToken,
   { value, code, type }: VerifyVerificationRequestProps
-) {
-// The verification payload supports both email and phone numbers.
-// TODO: Confirm and configure the correct endpoint for SMS verification.
+): Promise<ApiResponse<VerifyVerificationRequestResponse>> {
+  // TODO: het endpoint voor telefoonverificatie is nog niet bevestigd (plan, open punt 7).
+  // Het payload ondersteunt al e-mail en telefoon; het endpoint is nu voor beide `/emailverificatie`.
   const identificatieType = getIdentificatieType(
     authProfileAndToken.profile.profileType
   );
   const verificationData = {
-  identificatieNummer: authProfileAndToken.profile.id,
-  identificatieType,
-  verificatieCode: code,
-};
+    identificatieNummer: authProfileAndToken.profile.id,
+    identificatieType,
+    verificatieCode: code,
+  };
 
-const data: VerifyVerificationRequestPayload =
-  type === 'Telefoonnummer'
-    ? {
-        ...verificationData,
-        telefoonnummer: normalizeDutchMobileNumber(value),
-      }
-    : {
-        ...verificationData,
-        email: value,
-      };
+  let data: VerifyVerificationRequestPayload;
 
-  const apiConfig = getCustomApiConfig(profieldienstRequestConfig, {
+  if (type === 'Telefoonnummer') {
+    const telefoonnummer = normalizeTelefoonnummer(value);
+
+    if (telefoonnummer.status !== 'OK') {
+      return telefoonnummer;
+    }
+
+    data = { ...verificationData, telefoonnummer: telefoonnummer.content };
+  } else {
+    data = { ...verificationData, email: value };
+  }
+
+  const apiConfig = getCustomApiConfig(profielserviceConfig, {
     method: 'POST',
     data,
     formatUrl({ url }) {
@@ -203,4 +247,54 @@ const data: VerifyVerificationRequestPayload =
   });
 
   return requestData<VerifyVerificationRequestResponse>(apiConfig);
+}
+
+// De profielservice kent geen zaken en kan dus niet vaststellen van wie een zaak is. De echte controle is een
+// OpenZaak-aanroep (plan WP8) en die service bestaat nog niet. Tot dan weigeren we altijd (fail closed):
+// liever geen zaakvoorkeur dan een voorkeur voor een zaak waarvan het eigenaarschap niet vaststaat.
+function zaakIsVanGebruiker(): Promise<ApiResponse<boolean>> {
+  return Promise.resolve(
+    apiErrorResult(
+      'Controle of de zaak van de gebruiker is, is nog niet beschikbaar',
+      null,
+      HttpStatusCode.ServiceUnavailable
+    )
+  );
+}
+
+export function createProfielserviceBackend({
+  profielservice,
+}: GemeenteKlantcontactConfig): ProfielserviceBackend {
+  return {
+    fetchContactgegevens: (authProfileAndToken) =>
+      fetchContactgegevens(profielservice, authProfileAndToken),
+    fetchDienstverlener: (authProfileAndToken, dienstverlenerNaam) =>
+      fetchDienstverlener(
+        profielservice,
+        authProfileAndToken,
+        dienstverlenerNaam
+      ),
+    createContactgegeven: (
+      authProfileAndToken,
+      contactgegevenType,
+      contactgegevenWaarde,
+      options
+    ) =>
+      createContactgegeven(
+        profielservice,
+        authProfileAndToken,
+        contactgegevenType,
+        contactgegevenWaarde,
+        options
+      ),
+    deleteContactgegeven: (authProfileAndToken, contactgegevenId) =>
+      deleteContactgegeven(
+        profielservice,
+        authProfileAndToken,
+        contactgegevenId
+      ),
+    verifyContactgegeven: (authProfileAndToken, props) =>
+      verifyContactgegeven(profielservice, authProfileAndToken, props),
+    zaakIsVanGebruiker,
+  };
 }

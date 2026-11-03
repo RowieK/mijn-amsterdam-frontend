@@ -1,0 +1,46 @@
+[
+  {
+    "id": "1",
+    "type": "Email",
+    "waarde": "mokum@example.org",
+    "isGeverifieerd": true,
+    "isDefault": true,
+    "referentie": null,
+    "createdAt": "2025-01-01T10:00:00Z",
+    "lastUpdated": "2025-01-01T10:00:00Z",
+    "scopes": []
+  },
+  {
+    "id": "2",
+    "type": "Telefoonnummer",
+    "waarde": "0612345678",
+    "isGeverifieerd": true,
+    "isDefault": true,
+    "referentie": null,
+    "createdAt": "2025-01-01T10:00:00Z",
+    "lastUpdated": "2025-01-01T10:00:00Z",
+    "scopes": []
+  },
+  {
+    "id": "3",
+    "type": "Email",
+    "waarde": "zaak@example.org",
+    "isGeverifieerd": true,
+    "isDefault": false,
+    "referentie": "Z-24-2238078",
+    "createdAt": "2025-02-01T10:00:00Z",
+    "lastUpdated": "2025-02-01T10:00:00Z",
+    "scopes": []
+  },
+  {
+    "id": "4",
+    "type": "Telefoonnummer",
+    "waarde": "0687654321",
+    "isGeverifieerd": false,
+    "isDefault": false,
+    "referentie": "Z-24-0000001",
+    "createdAt": "2025-02-02T10:00:00Z",
+    "lastUpdated": "2025-02-02T10:00:00Z",
+    "scopes": []
+  }
+]
