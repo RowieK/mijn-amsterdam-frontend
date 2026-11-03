@@ -6,10 +6,7 @@ import { getFromEnv } from '../../helpers/env.ts';
 export const featureToggle = {
   afspraken: isEnabled('KLANT_CONTACT.afspraken'),
   communicatievoorkeuren: isEnabled('KLANT_CONTACT.communicatievoorkeuren'),
-  // Wordt bij elk verzoek gelezen, zodat een wijziging via de AppConfiguration direct werkt.
-  get zaakvoorkeuren() {
-    return isEnabled('KLANT_CONTACT.zaakvoorkeuren');
-  },
+  zaakvoorkeuren: isEnabled('KLANT_CONTACT.zaakvoorkeuren'),
 };
 
 const BASE_ROUTE = '/services/klantcontact';

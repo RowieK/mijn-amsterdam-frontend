@@ -16,7 +16,6 @@ import {
   apiErrorResult,
   apiSuccessResult,
 } from '../../../universal/helpers/api.ts';
-import { featureToggle } from '../../config/feature-toggles.ts';
 import type { ResponseAuthenticated } from '../../routing/route-helpers.ts';
 
 const ZAAK = 'Z-24-2238078';
@@ -70,6 +69,7 @@ describe('klantcontact-route-handlers', () => {
   describe('handleSetZaakKanaalVoorkeur', () => {
     let req: Request;
     let res: ResponseAuthenticated;
+    let zaakIsVanGebruiker: MockInstance;
     let fetchContactgegevens: MockInstance;
     let createContactgegeven: MockInstance;
     let deleteContactgegeven: MockInstance;
@@ -83,6 +83,9 @@ describe('klantcontact-route-handlers', () => {
         value: GEVERIFIEERD_ADRES,
       };
 
+      zaakIsVanGebruiker = vi
+        .spyOn(klantcontactBackend, 'zaakIsVanGebruiker')
+        .mockResolvedValue(apiSuccessResult(true));
       fetchContactgegevens = vi
         .spyOn(klantcontactBackend, 'fetchContactgegevens')
         .mockResolvedValue(apiSuccessResult(contactgegevens));
@@ -113,8 +116,37 @@ describe('klantcontact-route-handlers', () => {
       await handleSetZaakKanaalVoorkeur(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
+      expect(zaakIsVanGebruiker).not.toHaveBeenCalled();
       expect(fetchContactgegevens).not.toHaveBeenCalled();
       expect(createContactgegeven).not.toHaveBeenCalled();
+    });
+
+    test('weigert met 403 en doet verder niets als de zaak niet van de gebruiker is', async () => {
+      zaakIsVanGebruiker.mockResolvedValue(apiSuccessResult(false));
+
+      await handleSetZaakKanaalVoorkeur(req, res);
+
+      expect(zaakIsVanGebruiker).toHaveBeenCalledWith(
+        res.locals.authProfileAndToken,
+        ZAAK
+      );
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(fetchContactgegevens).not.toHaveBeenCalled();
+      expect(createContactgegeven).not.toHaveBeenCalled();
+      expect(deleteContactgegeven).not.toHaveBeenCalled();
+    });
+
+    test('weigert met 503 en doet verder niets als het eigenaarschap niet vast te stellen is', async () => {
+      zaakIsVanGebruiker.mockResolvedValue(
+        apiErrorResult('Controle niet beschikbaar', null, 503)
+      );
+
+      await handleSetZaakKanaalVoorkeur(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(fetchContactgegevens).not.toHaveBeenCalled();
+      expect(createContactgegeven).not.toHaveBeenCalled();
+      expect(deleteContactgegeven).not.toHaveBeenCalled();
     });
 
     test.each([
@@ -202,21 +234,32 @@ describe('klantcontact-route-handlers', () => {
       );
     });
   });
+
   describe('handleDeleteZaakKanaalVoorkeur', () => {
     let req: Request;
     let res: ResponseAuthenticated;
+    let zaakIsVanGebruiker: MockInstance;
     let fetchContactgegevens: MockInstance;
     let deleteContactgegeven: MockInstance;
 
     beforeEach(() => {
       req = RequestMock.new().get();
       res = ResponseAuthenticatedMock.new();
-      // Id '3' is een zaakadres (met referentie) van deze gebruiker.
-      req.body = { id: '3' };
+      req.body = { zaakIdentificatie: ZAAK };
 
+      zaakIsVanGebruiker = vi.spyOn(klantcontactBackend, 'zaakIsVanGebruiker');
       fetchContactgegevens = vi
         .spyOn(klantcontactBackend, 'fetchContactgegevens')
-        .mockResolvedValue(apiSuccessResult(contactgegevens));
+        .mockResolvedValue(
+          apiSuccessResult([
+            ...contactgegevens,
+            getContactgegeven({
+              id: 'zaakadres',
+              isDefault: false,
+              referentie: ZAAK,
+            }),
+          ])
+        );
       deleteContactgegeven = vi
         .spyOn(klantcontactBackend, 'deleteContactgegeven')
         .mockResolvedValue(apiSuccessResult(null));
@@ -226,8 +269,13 @@ describe('klantcontact-route-handlers', () => {
       vi.restoreAllMocks();
     });
 
-    test('geeft 400 zonder backend-aanroepen als het id ontbreekt', async () => {
-      req.body = {};
+    test.each([
+      { naam: 'zaakidentificatie ontbreekt', body: {} },
+      { naam: 'lege zaakidentificatie', body: { zaakIdentificatie: '' } },
+      { naam: 'geen string', body: { zaakIdentificatie: 123 } },
+      { naam: 'ongeldig teken', body: { zaakIdentificatie: 'Z/24/1' } },
+    ])('geeft 400 zonder backend-aanroepen: $naam', async ({ body }) => {
+      req.body = body;
 
       await handleDeleteZaakKanaalVoorkeur(req, res);
 
@@ -236,45 +284,25 @@ describe('klantcontact-route-handlers', () => {
       expect(deleteContactgegeven).not.toHaveBeenCalled();
     });
 
-    test.each([
-      { naam: 'een id van een andere gebruiker', id: '999' },
-      {
-        naam: 'een standaardadres, dat is geen zaakvoorkeur',
-        id: '1',
-      },
-    ])('geeft 403 en verwijdert niets bij $naam', async ({ id }) => {
-      req.body = { id };
-
-      await handleDeleteZaakKanaalVoorkeur(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(deleteContactgegeven).not.toHaveBeenCalled();
-    });
-
-    test('geeft een foutstatus en verwijdert niets als de profielresponse faalt', async () => {
-      fetchContactgegevens.mockResolvedValue(
-        apiErrorResult('Profiel ophalen mislukt', null)
-      );
-
-      await handleDeleteZaakKanaalVoorkeur(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(deleteContactgegeven).not.toHaveBeenCalled();
-    });
-
-    test('verwijdert het zaakadres van de ingelogde gebruiker', async () => {
+    test('verwijdert het zaakadres en laat de standaardadressen staan', async () => {
       await handleDeleteZaakKanaalVoorkeur(req, res);
 
       expect(deleteContactgegeven).toHaveBeenCalledTimes(1);
       expect(deleteContactgegeven).toHaveBeenCalledWith(
         res.locals.authProfileAndToken,
-        '3'
+        'zaakadres'
       );
-      expect(res.status).not.toHaveBeenCalledWith(403);
+      expect(res.status).not.toHaveBeenCalled();
       expect(res.send).toHaveBeenCalledWith(apiSuccessResult(null));
     });
 
-    test('geeft de fout door als het verwijderen mislukt', async () => {
+    test('vraagt het eigenaarschap van de zaak niet op: het raakt alleen het eigen profiel', async () => {
+      await handleDeleteZaakKanaalVoorkeur(req, res);
+
+      expect(zaakIsVanGebruiker).not.toHaveBeenCalled();
+    });
+
+    test('geeft een foutstatus als het zaakadres niet verwijderd kan worden', async () => {
       deleteContactgegeven.mockResolvedValue(
         apiErrorResult('Verwijderen mislukt', null)
       );
@@ -283,62 +311,5 @@ describe('klantcontact-route-handlers', () => {
 
       expect(res.status).toHaveBeenCalledWith(500);
     });
-  });
-
-  describe('toggle KLANT_CONTACT.zaakvoorkeuren', () => {
-    const TOGGLE = 'KLANT_CONTACT.zaakvoorkeuren';
-    const ORIGINAL = featureToggle[TOGGLE];
-    let fetchContactgegevens: MockInstance;
-    let createContactgegeven: MockInstance;
-    let deleteContactgegeven: MockInstance;
-
-    beforeEach(() => {
-      fetchContactgegevens = vi
-        .spyOn(klantcontactBackend, 'fetchContactgegevens')
-        .mockResolvedValue(apiSuccessResult(contactgegevens));
-      createContactgegeven = vi
-        .spyOn(klantcontactBackend, 'createContactgegeven')
-        .mockResolvedValue(apiSuccessResult(nieuwContactgegeven));
-      deleteContactgegeven = vi
-        .spyOn(klantcontactBackend, 'deleteContactgegeven')
-        .mockResolvedValue(apiSuccessResult(null));
-    });
-
-    afterEach(() => {
-      featureToggle[TOGGLE] = ORIGINAL;
-      vi.restoreAllMocks();
-    });
-
-    test.each([
-      {
-        naam: 'zetten',
-        handler: handleSetZaakKanaalVoorkeur,
-        body: {
-          zaakIdentificatie: ZAAK,
-          kanaal: 'Email',
-          value: GEVERIFIEERD_ADRES,
-        },
-      },
-      {
-        naam: 'verwijderen',
-        handler: handleDeleteZaakKanaalVoorkeur,
-        body: { id: '3' },
-      },
-    ])(
-      'doet niets als de toggle uit staat: $naam',
-      async ({ handler, body }) => {
-        featureToggle[TOGGLE] = false;
-        const req = RequestMock.new().get();
-        const res = ResponseAuthenticatedMock.new();
-        req.body = body;
-
-        await handler(req, res);
-
-        expect(res.status).toHaveBeenCalledWith(404);
-        expect(fetchContactgegevens).not.toHaveBeenCalled();
-        expect(createContactgegeven).not.toHaveBeenCalled();
-        expect(deleteContactgegeven).not.toHaveBeenCalled();
-      }
-    );
   });
 });

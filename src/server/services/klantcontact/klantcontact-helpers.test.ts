@@ -1,5 +1,7 @@
+import type { GemeenteKlantcontactConfig } from './klantcontact-backend-types.ts';
 import {
   getMostRecentByContactgegevenType,
+  getValidZaakReferentie,
   getZaakKanaalVoorkeuren,
   isValidZaakReferentie,
   zaakIdentificatieAlsReferentie,
@@ -50,6 +52,57 @@ describe('klantcontact-helpers', () => {
 
     test('geeft null als de zaakidentificatie niet in het patroon past', () => {
       expect(zaakIdentificatieAlsReferentie('Z/24/2238078')).toBeNull();
+    });
+  });
+
+  describe('getValidZaakReferentie', () => {
+    function getConfig(
+      referentie: GemeenteKlantcontactConfig['zaakVoorkeur']['referentie']
+    ): GemeenteKlantcontactConfig {
+      return {
+        profielservice: {},
+        zaakVoorkeur: { referentie, kanalen: ['Email'] },
+      };
+    }
+
+    test('geeft de referentie volgens de strategie van de config', () => {
+      const config = getConfig(zaakIdentificatieAlsReferentie);
+
+      expect(getValidZaakReferentie(config, 'Z-24-2238078')).toBe(
+        'Z-24-2238078'
+      );
+    });
+
+    test('gebruikt de strategie van de gemeente en niet de zaakidentificatie zelf', () => {
+      const config = getConfig((zaakIdentificatie) =>
+        zaakIdentificatie.replaceAll('/', '-')
+      );
+
+      expect(getValidZaakReferentie(config, 'Z/24/1')).toBe('Z-24-1');
+    });
+
+    test.each([
+      { naam: 'undefined', invoer: undefined },
+      { naam: 'null', invoer: null },
+      { naam: 'een getal', invoer: 123 },
+      { naam: 'een object', invoer: {} },
+      { naam: 'een array met een geldige identificatie', invoer: ['Z-24-1'] },
+    ])('geeft null als de invoer geen string is: $naam', ({ invoer }) => {
+      const config = getConfig(zaakIdentificatieAlsReferentie);
+
+      expect(getValidZaakReferentie(config, invoer)).toBeNull();
+    });
+
+    test('geeft null als de strategie null geeft', () => {
+      const config = getConfig(zaakIdentificatieAlsReferentie);
+
+      expect(getValidZaakReferentie(config, 'Z/24/2238078')).toBeNull();
+    });
+
+    test('geeft null als de uitkomst van de strategie geen geldige referentie is', () => {
+      const config = getConfig(() => 'a'.repeat(51));
+
+      expect(getValidZaakReferentie(config, 'Z-24-1')).toBeNull();
     });
   });
 

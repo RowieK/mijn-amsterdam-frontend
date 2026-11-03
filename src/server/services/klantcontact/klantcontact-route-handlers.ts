@@ -9,18 +9,18 @@ import {
 import {
   ContactgegevenTypes,
   ContactgegevenTypeValues,
+  deleteZaakKanaalVoorkeur,
   fetchCommunicatievoorkeuren,
   setZaakKanaalVoorkeur,
 } from './klantcontact-communicatievoorkeuren.ts';
-import { isValidZaakReferentie } from './klantcontact-helpers.ts';
-import { featureToggle } from './klantcontact-service-config.ts';
+import { getValidZaakReferentie } from './klantcontact-helpers.ts';
 import { apiErrorResult } from '../../../universal/helpers/api.ts';
 import {
-  send404,
   sendBadRequest,
   sendBadRequestInvalidInput,
   sendInternalServerError,
   sendResponse,
+  sendServiceUnavailable,
   type ResponseAuthenticated,
 } from '../../routing/route-helpers.ts';
 
@@ -116,16 +116,14 @@ export async function handleFetchDienstverlener(
   return sendResponse(res, response);
 }
 
-// Zet de voorkeur voor één zaak. Alleen een geverifieerd adres van de klant zelf mag gekozen worden.
+// Zet de voorkeur voor één zaak. Alleen een geverifieerd adres van de klant zelf mag gekozen worden,
+// en alleen voor een zaak van de klant zelf (anders kan iemand het kanaal van andermans zaak omleiden).
+// Kan het eigenaarschap niet worden vastgesteld, dan weigeren we ook.
 // Contactgegevens (value) komen niet in foutmeldingen of logs.
 export async function handleSetZaakKanaalVoorkeur(
   req: Request,
   res: ResponseAuthenticated
 ) {
-  if (!featureToggle.zaakvoorkeuren) {
-    return send404(res);
-  }
-
   const { zaakIdentificatie, kanaal, value } = req.body ?? {};
 
   if (!klantcontactConfig.zaakVoorkeur.kanalen.includes(kanaal)) {
@@ -136,13 +134,28 @@ export async function handleSetZaakKanaalVoorkeur(
     return sendBadRequest(res, 'value is required');
   }
 
-  const referentie =
-    typeof zaakIdentificatie === 'string'
-      ? klantcontactConfig.zaakVoorkeur.referentie(zaakIdentificatie)
-      : null;
-
-  if (!referentie || !isValidZaakReferentie(referentie)) {
+  if (!getValidZaakReferentie(klantcontactConfig, zaakIdentificatie)) {
     return sendBadRequest(res, 'zaakIdentificatie is not valid');
+  }
+
+  const zaakIsVanGebruiker = await klantcontactBackend.zaakIsVanGebruiker(
+    res.locals.authProfileAndToken,
+    zaakIdentificatie
+  );
+
+  if (zaakIsVanGebruiker.status !== 'OK') {
+    return sendServiceUnavailable(res, 'Controleren van de zaak mislukt');
+  }
+
+  if (!zaakIsVanGebruiker.content) {
+    return sendResponse(
+      res,
+      apiErrorResult(
+        'Forbidden: de zaak hoort niet bij de ingelogde gebruiker',
+        null,
+        HttpStatusCode.Forbidden
+      )
+    );
   }
 
   const contactgegevens = await klantcontactBackend.fetchContactgegevens(
@@ -182,47 +195,23 @@ export async function handleSetZaakKanaalVoorkeur(
   return sendResponse(res, response);
 }
 
-// Verwijdert de voorkeur voor één zaak. Alleen een zaakadres (met referentie) van de ingelogde gebruiker
-// kan hier worden verwijderd, nooit het standaardadres of een adres van een ander.
+// Verwijdert de voorkeur voor één zaak. Dit raakt alleen adressen in het eigen profiel van de klant,
+// dus anders dan bij het zetten is een controle op eigenaarschap van de zaak niet nodig.
 export async function handleDeleteZaakKanaalVoorkeur(
   req: Request,
   res: ResponseAuthenticated
 ) {
-  if (!featureToggle.zaakvoorkeuren) {
-    return send404(res);
+  const { zaakIdentificatie } = req.body ?? {};
+
+  if (!getValidZaakReferentie(klantcontactConfig, zaakIdentificatie)) {
+    return sendBadRequest(res, 'zaakIdentificatie is not valid');
   }
 
-  const { id } = req.body ?? {};
-
-  if (!id || typeof id !== 'string') {
-    return sendBadRequest(res, 'id is required');
-  }
-
-  const contactgegevens = await klantcontactBackend.fetchContactgegevens(
-    res.locals.authProfileAndToken
-  );
-
-  if (contactgegevens.status !== 'OK') {
-    return sendInternalServerError(
-      res,
-      'Ophalen van de contactgegevens mislukt'
-    );
-  }
-
-  const isZaakadresVanGebruiker = contactgegevens.content.some(
-    (contactgegeven) => contactgegeven.id === id && !!contactgegeven.referentie
-  );
-
-  if (!isZaakadresVanGebruiker) {
-    return sendResponse(
-      res,
-      apiErrorResult('Forbidden', null, HttpStatusCode.Forbidden)
-    );
-  }
-
-  const response = await klantcontactBackend.deleteContactgegeven(
+  const response = await deleteZaakKanaalVoorkeur(
     res.locals.authProfileAndToken,
-    id
+    klantcontactBackend,
+    klantcontactConfig,
+    zaakIdentificatie
   );
 
   return sendResponse(res, response);
