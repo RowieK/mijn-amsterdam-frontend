@@ -63,6 +63,12 @@ export async function fetchCommunicatievoorkeuren(
     );
   }
 
+  // Zonder profiel kunnen we geen betrouwbare voorkeuren tonen. Een lege lijst
+  // zou voor de burger lijken alsof er geen zaakvoorkeuren zijn.
+  if (contactgegevens.status !== 'OK') {
+    return apiErrorResult('Ophalen van het communicatieprofiel mislukt', null);
+  }
+
   const email = getMostRecentByContactgegevenType(
     contactgegevens,
     ContactgegevenTypes.Email
