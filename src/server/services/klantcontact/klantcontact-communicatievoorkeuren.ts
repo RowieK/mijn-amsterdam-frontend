@@ -5,8 +5,8 @@ import type {
 } from './klantcontact-backend-types.ts';
 import {
   getMostRecentByContactgegevenType,
+  getValidZaakReferentie,
   getZaakKanaalVoorkeuren,
-  isValidZaakReferentie,
 } from './klantcontact-helpers.ts';
 import type {
   CommunicatievoorkeurenResponseFrontend,
@@ -137,9 +137,9 @@ export async function setZaakKanaalVoorkeur(
     );
   }
 
-  const referentie = config.zaakVoorkeur.referentie(zaakIdentificatie);
+  const referentie = getValidZaakReferentie(config, zaakIdentificatie);
 
-  if (!referentie || !isValidZaakReferentie(referentie)) {
+  if (!referentie) {
     return apiErrorResult('Ongeldige zaakidentificatie', null);
   }
 
@@ -180,4 +180,46 @@ export async function setZaakKanaalVoorkeur(
     zaakIdentificatie,
     contactgegeven: nieuwContactgegeven.content,
   });
+}
+
+// Verwijdert de voorkeur voor één zaak. De OMC valt daarna terug op het standaardadres van de klant.
+// Alle adressen met dezelfde referentie gaan weg, ook duplicaten: de OMC pakt het eerste adres met een
+// overeenkomende referentie, dus een achtergebleven duplicaat houdt de oude keuze actief.
+// Is er geen zaakadres, dan is er niets te verwijderen en is het resultaat een succes.
+// Faalt een delete, dan volgt een foutresultaat; opnieuw proberen ruimt de rest op.
+// Contactgegevens (waarde) komen niet in foutmeldingen of logs.
+export async function deleteZaakKanaalVoorkeur(
+  authProfileAndToken: AuthProfileAndToken,
+  backend: KlantcontactBackend,
+  config: GemeenteKlantcontactConfig,
+  zaakIdentificatie: string
+): Promise<ApiResponse<null>> {
+  const referentie = getValidZaakReferentie(config, zaakIdentificatie);
+
+  if (!referentie) {
+    return apiErrorResult('Ongeldige zaakidentificatie', null);
+  }
+
+  const contactgegevens =
+    await backend.fetchContactgegevens(authProfileAndToken);
+
+  if (contactgegevens.status !== 'OK') {
+    return apiErrorResult('Ophalen van de contactgegevens mislukt', null);
+  }
+
+  const zaakContactgegevens = contactgegevens.content.filter(
+    (contactgegeven) => contactgegeven.referentie === referentie
+  );
+
+  const deleteResponses = await Promise.all(
+    zaakContactgegevens.map((contactgegeven) =>
+      backend.deleteContactgegeven(authProfileAndToken, contactgegeven.id)
+    )
+  );
+
+  if (deleteResponses.some((response) => response.status !== 'OK')) {
+    return apiErrorResult('Verwijderen van de zaakvoorkeur mislukt', null);
+  }
+
+  return apiSuccessResult(null);
 }

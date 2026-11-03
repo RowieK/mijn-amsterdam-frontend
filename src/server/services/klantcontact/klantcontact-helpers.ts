@@ -1,3 +1,4 @@
+import type { GemeenteKlantcontactConfig } from './klantcontact-backend-types.ts';
 import type {
   ContactgegevenFrontend,
   ContactgegevenSource,
@@ -53,6 +54,21 @@ export function zaakIdentificatieAlsReferentie(
   zaakIdentificatie: string
 ): string | null {
   return isValidZaakReferentie(zaakIdentificatie) ? zaakIdentificatie : null;
+}
+
+// Zet een zaakidentificatie (ongecontroleerde invoer) om naar de `referentie` volgens de strategie van de gemeente.
+// Geeft null als de invoer geen string is of de uitkomst niet bruikbaar is als referentie.
+export function getValidZaakReferentie(
+  config: GemeenteKlantcontactConfig,
+  zaakIdentificatie: unknown
+): string | null {
+  if (typeof zaakIdentificatie !== 'string') {
+    return null;
+  }
+
+  const referentie = config.zaakVoorkeur.referentie(zaakIdentificatie);
+
+  return referentie && isValidZaakReferentie(referentie) ? referentie : null;
 }
 
 function isZaakKanaal(

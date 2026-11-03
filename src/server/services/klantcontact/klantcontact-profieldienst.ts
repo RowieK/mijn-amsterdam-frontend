@@ -20,7 +20,7 @@ import type {
   VerifyVerificationRequestResponse,
 } from './klantcontact-profieldienst-types.ts';
 import type { DienstverlenerSource } from './klantcontact-profieldienst-types.ts';
-import { apiSuccessResult, type ApiResponse, } from '../../../universal/helpers/api.ts';
+import { apiErrorResult, apiSuccessResult, type ApiResponse, } from '../../../universal/helpers/api.ts';
 import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
 import { getCustomApiConfig } from '../../helpers/source-api-helpers.ts';
 import { requestData } from '../../helpers/source-api-request.ts';
@@ -195,6 +195,19 @@ async function verifyContactgegeven(
   return requestData<VerifyVerificationRequestResponse>(apiConfig);
 }
 
+// De profielservice kent geen zaken en kan dus niet vaststellen van wie een zaak is. De echte controle is een
+// OpenZaak-aanroep (plan WP8) en die service bestaat nog niet. Tot dan weigeren we altijd (fail closed):
+// liever geen zaakvoorkeur dan een voorkeur voor een zaak waarvan het eigenaarschap niet vaststaat.
+function zaakIsVanGebruiker(): Promise<ApiResponse<boolean>> {
+  return Promise.resolve(
+    apiErrorResult(
+      'Controle of de zaak van de gebruiker is, is nog niet beschikbaar',
+      null,
+      HttpStatusCode.ServiceUnavailable
+    )
+  );
+}
+
 export function createProfielserviceBackend({
   profielservice,
 }: GemeenteKlantcontactConfig): ProfielserviceBackend {
@@ -228,5 +241,6 @@ export function createProfielserviceBackend({
       ),
     verifyContactgegeven: (authProfileAndToken, props) =>
       verifyContactgegeven(profielservice, authProfileAndToken, props),
+    zaakIsVanGebruiker,
   };
 }

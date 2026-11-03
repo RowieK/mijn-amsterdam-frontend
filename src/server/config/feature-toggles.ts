@@ -16,6 +16,7 @@ export const featureToggle = {
   ['VERGUNNINGEN.VTHOnPowerbrowserActive']: !IS_PRODUCTION,
   ['KLANT_CONTACT.afspraken']: !IS_PRODUCTION,
   ['KLANT_CONTACT.communicatievoorkeuren']: !IS_PRODUCTION,
+  ['KLANT_CONTACT.zaakvoorkeuren']: !IS_PRODUCTION,
   ['KLANT_CONTACT.thema']: !IS_PRODUCTION,
   ['MELDINGEN.newTipsDesign']: !IS_PRODUCTION,
   ['HLI.stadspas.securityCode']: true,
