@@ -1,3 +1,5 @@
+import { ZaakKanaalVoorkeur } from '../KlantContact/Communicatievoorkeuren/ZaakKanaalVoorkeur.tsx';
+import { useAppStateStore } from '../../../../../hooks/useAppStateStore.ts';
 import { useZaakDetailData } from './useErfpachtZaakData.hook.ts';
 import { Datalist, type Row } from '../../../../../components/Datalist/Datalist.tsx';
 import { PageContentCell } from '../../../../../components/Page/Page.tsx';
@@ -6,6 +8,15 @@ import { ThemaDetailPagina } from '../../../../../components/Thema/ThemaDetailPa
 import { useHTMLDocumentTitle } from '../../../../../hooks/useHTMLDocumentTitle.ts';
 
 export function ErfpachtZaakDetail() {
+  const standaardContactgegevens = useAppStateStore(
+    (state) =>
+      state.KLANT_CONTACT.content?.communicatievoorkeuren
+        ?.standaardContactgegevens
+  );
+
+  const contactgegevens = Object.values(
+    standaardContactgegevens ?? {}
+  );
   const {
     zaak,
     dossiers,
@@ -49,12 +60,19 @@ export function ErfpachtZaakDetail() {
       isError={isError || isErrorThemaData}
       isLoading={isLoading || isLoadingThemaData}
       pageContentMain={
-        !!zaak && (
-          <PageContentCell spanWide={8}>
-            <Datalist rows={rows} />
-          </PageContentCell>
-        )
-      }
+  !!zaak && (
+    <PageContentCell spanWide={8}>
+      <Datalist rows={rows} />
+
+      {zaak.zaakNummer && (
+        <ZaakKanaalVoorkeur
+          zaakIdentificatie={zaak.zaakNummer}
+          contactgegevens={contactgegevens}
+        />
+      )}
+    </PageContentCell>
+  )
+}
       breadcrumbs={breadcrumbs}
       showStatusStepsSubstepHeading={false}
     />
