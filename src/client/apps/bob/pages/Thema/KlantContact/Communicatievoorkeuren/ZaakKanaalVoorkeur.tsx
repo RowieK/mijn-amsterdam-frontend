@@ -42,7 +42,7 @@ useEffect(() => {
   setGekozenContactgegeven(
     bestaandeVoorkeur?.contactgegeven.id ?? 'standaard'
   );
-}, [bestaandeVoorkeur?.contactgegeven.id, zaakIdentificatie]);
+}, [bestaandeVoorkeur?.contactgegeven?.id, zaakIdentificatie]);
   const [isSaved, setIsSaved] = useState(false);
   const [isDeleteError, setIsDeleteError] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -125,9 +125,14 @@ useEffect(() => {
           headingLevel={4}
         >
           <Paragraph>
-            U heeft nog geen geverifieerd e-mailadres of
-            mobiel telefoonnummer ingesteld.
-          </Paragraph>
+          U heeft nog geen geverifieerd e-mailadres of
+          mobiel telefoonnummer ingesteld.
+        </Paragraph>
+        <Paragraph>
+          <a href="/mijn-contact">
+          Ga naar Mijn contactgegevens om uw contactgegevens in te stellen.
+          </a>
+        </Paragraph>
         </Alert>
       )}
 
