@@ -2,12 +2,15 @@ import { Paragraph } from '@amsterdam/design-system-react';
 
 import { Afspraken } from './Afspraken/Afspraken.tsx';
 import { CommunicatieVoorkeuren } from './Communicatievoorkeuren/CommunicatieVoorkeuren.tsx';
+import { useZaakVoorkeurThemas } from './Communicatievoorkeuren/useZaakVoorkeurThemas.ts';
 import { ContactMomenten } from './Contactmomenten/ContactmomentenTable.tsx';
 import { useKlantcontactData } from './useKlantcontactData.hook.tsx';
 import { PageContentCell } from '../../../../../components/Page/Page.tsx';
 import { ThemaPagina } from '../../../../../components/Thema/ThemaPagina.tsx';
 import { getRedactedClass } from '../../../../../helpers/cobrowse.ts';
 import { useHTMLDocumentTitle } from '../../../../../hooks/useHTMLDocumentTitle.ts';
+
+const PAGE_TITLE = 'Mijn contact met de gemeente';
 
 export function KlantContactThema() {
   const {
@@ -19,6 +22,7 @@ export function KlantContactThema() {
     afspraken,
     contactmomenten,
   } = useKlantcontactData();
+  const zaakThemas = useZaakVoorkeurThemas();
 
   const routeConfig = themaConfig.route;
   useHTMLDocumentTitle(routeConfig);
@@ -26,10 +30,9 @@ export function KlantContactThema() {
   const pageContentTop = (
     <PageContentCell spanWide={8}>
       <Paragraph>
-        Uw afspraken bij een Stadsloket slaan we op. Ook bewaren we gegevens
-        over wanneer u contact met ons hebt gehad en hoe u het liefst met ons
-        communiceert. Zo kunnen we u beter helpen. Hieronder ziet u welke
-        gegevens we van u hebben.
+        Hier regelt u uw contactvoorkeuren, zoals of u de post van de gemeente
+        alleen digitaal wilt ontvangen, het aanpassen van uw afspraken met de
+        gemeente en het wijzigen van uw e-mailadres of telefoonnummer.
       </Paragraph>
     </PageContentCell>
   );
@@ -56,24 +59,16 @@ export function KlantContactThema() {
   return (
     <ThemaPagina
       id={themaConfig.id}
-      title={themaConfig.title}
+      title={PAGE_TITLE}
       pageContentTop={pageContentTop}
       pageLinks={themaConfig.pageLinks}
       isPartialError={isPartialError}
       errorAlertContent={pageContentErrorAlert}
       pageContentMain={
         <>
-          {themaConfig.featureToggle.afspraken.active && (
-            <PageContentCell
-              spanWide={10}
-              className={getRedactedClass(null, 'full')}
-            >
-              <Afspraken afspraken={afspraken} isLoading={isLoading} />
-            </PageContentCell>
-          )}
           {communicatievoorkeuren !== null && (
             <PageContentCell
-              spanWide={8}
+              spanWide={10}
               className={getRedactedClass(null, 'full')}
             >
               <CommunicatieVoorkeuren
@@ -83,6 +78,22 @@ export function KlantContactThema() {
                 aangeslotenDiensten={
                   communicatievoorkeuren?.aangeslotenDiensten
                 }
+                zaakKanaalVoorkeuren={
+                  communicatievoorkeuren?.zaakKanaalVoorkeuren
+                }
+                zaakThemas={zaakThemas}
+              />
+            </PageContentCell>
+          )}
+          {themaConfig.featureToggle.afspraken.active && (
+            <PageContentCell
+              spanWide={10}
+              className={getRedactedClass(null, 'full')}
+            >
+              <Afspraken
+                afspraken={afspraken}
+                isLoading={isLoading}
+                heading="Mijn afspraken bij een stadsloket"
               />
             </PageContentCell>
           )}

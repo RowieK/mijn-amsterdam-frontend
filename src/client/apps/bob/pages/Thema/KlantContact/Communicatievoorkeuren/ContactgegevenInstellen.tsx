@@ -12,6 +12,7 @@ import { useHTMLDocumentTitle } from '../../../../../../hooks/useHTMLDocumentTit
 import { useKlantcontactData } from '../useKlantcontactData.hook.tsx';
 import { ContactgegevenTypeEnum } from './CommunicatieVoorkeuren-config.ts';
 import { NotFound } from '../../../NotFound/NotFound.tsx';
+import type { InstelAction } from '../KlantContact-thema-config.ts';
 
 export function ContactgegevenInstellen() {
   const navigate = useNavigate();
@@ -22,8 +23,9 @@ export function ContactgegevenInstellen() {
 
   useHTMLDocumentTitle(routeConfig);
 
-  const { step = '1' } = useParams<{
+  const { step = '1', action = 'instellen' } = useParams<{
     step: string;
+    action: InstelAction;
   }>();
 
   const [valueLocal, setValueLocal] = useSessionStorage(
@@ -47,7 +49,7 @@ export function ContactgegevenInstellen() {
       generatePath(themaConfig.detailPageContactgegevenInstellen.route.path, {
         step,
         contactgegeven: contactgegevenType,
-        action: 'instellen',
+        action,
       })
     );
   }

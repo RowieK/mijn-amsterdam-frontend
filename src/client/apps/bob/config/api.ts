@@ -33,8 +33,8 @@ export const BFFApiUrls = {
   KLANTCONTACT_CONTACTGEGEVEN_VERIFY: `${BFF_API_BASE_URL}/services/klantcontact/contactgegeven/verify`,
   KLANTCONTACT_CONTACTGEGEVEN_DELETE: `${BFF_API_BASE_URL}/services/klantcontact/contactgegeven/delete`,
   // Kanaalvoorkeur per zaak (voorlopige routes)
-KLANTCONTACT_ZAAKVOORKEUR_SET: `${BFF_API_BASE_URL}/services/klantcontact/zaakvoorkeur/set`,
-KLANTCONTACT_ZAAKVOORKEUR_DELETE: `${BFF_API_BASE_URL}/services/klantcontact/zaakvoorkeur/delete`,
+  KLANTCONTACT_ZAAKVOORKEUR_SET: `${BFF_API_BASE_URL}/services/klantcontact/zaakvoorkeur/set`,
+  KLANTCONTACT_ZAAKVOORKEUR_DELETE: `${BFF_API_BASE_URL}/services/klantcontact/zaakvoorkeur/delete`,
 } as const;
 
 // Urls directly used from front-end

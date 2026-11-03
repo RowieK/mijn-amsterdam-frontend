@@ -23,3 +23,6 @@ export const ContactgegevenTypeEnum = {
 } as const satisfies Record<ContactgegevenType_, ContactgegevenType_>;
 
 export const MAXIMUM_AGE_BEFORE_VALIDATION_MONTHS = 6;
+
+// Anker van het blok "Mijn contactgegevens", waar de rij "Standaard instelling" in de tabel naar linkt.
+export const CONTACTGEGEVENS_ANCHOR = 'mijn-contactgegevens';

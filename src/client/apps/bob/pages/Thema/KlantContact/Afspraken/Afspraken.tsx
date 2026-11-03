@@ -18,18 +18,20 @@ type AfsprakenProps = {
   afspraken: AfspraakFrontend[];
   className?: string;
   isLoading?: boolean;
+  heading?: string;
 };
 
 export function Afspraken({
   afspraken = [],
   className,
   isLoading = false,
+  heading,
 }: AfsprakenProps) {
   const hasAfspraken = afspraken.length > 0;
 
   if (isLoading) {
     return (
-      <AfsprakenBase className={className}>
+      <AfsprakenBase className={className} heading={heading}>
         <LoadingContent />
       </AfsprakenBase>
     );
@@ -37,14 +39,14 @@ export function Afspraken({
 
   if (!hasAfspraken) {
     return (
-      <AfsprakenBase className={className}>
+      <AfsprakenBase className={className} heading={heading}>
         <Paragraph>Er zijn geen afspraken bij het Stadsloket.</Paragraph>
       </AfsprakenBase>
     );
   }
 
   return (
-    <AfsprakenBase className={className}>
+    <AfsprakenBase className={className} heading={heading}>
       <Column gap="large" className="ams-mb-l">
         {afspraken.slice(0, MAX_TABLE_ROWS_ON_THEMA_PAGINA).map((afspraak) => (
           <AfspraakCard key={afspraak.caseReference} afspraak={afspraak} />
@@ -64,12 +66,13 @@ export function Afspraken({
 type AfsprakenBaseProps = {
   className?: string;
   children: ReactNode;
+  heading?: string;
 };
 
-function AfsprakenBase({ className, children }: AfsprakenBaseProps) {
+function AfsprakenBase({ className, children, heading }: AfsprakenBaseProps) {
   return (
     <div className={className}>
-      <AfsprakenHeading />
+      <AfsprakenHeading>{heading}</AfsprakenHeading>
       <Paragraph className="ams-mb-m">
         Hier ziet u niet al uw afspraken. In het overzicht ziet u alleen de
         afspraken waarbij we uw persoonsgegevens nodig hebben om uw vraag te
@@ -96,10 +99,10 @@ export function AfsprakenDashboard({ afspraken, className }: AfsprakenProps) {
   );
 }
 
-export function AfsprakenHeading() {
+export function AfsprakenHeading({ children }: { children?: string }) {
   return (
     <Heading level={2} className="ams-mb-m">
-      Afspraken bij een Stadsloket
+      {children ?? 'Afspraken bij een Stadsloket'}
     </Heading>
   );
 }

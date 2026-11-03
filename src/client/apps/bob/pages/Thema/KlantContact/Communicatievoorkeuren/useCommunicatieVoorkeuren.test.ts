@@ -8,12 +8,16 @@ import {
   useSetZaakKanaalVoorkeur,
   useVerwijderZaakKanaalVoorkeur,
 } from './useCommunicatieVoorkeuren.ts';
+import type {
+  ContactgegevenFrontend,
+  ZaakKanaalVoorkeurFrontend,
+} from '../../../../../../../server/services/klantcontact/klantcontact-profieldienst-types.ts';
 import type { KlantcontactResponseData } from '../../../../../../../server/services/klantcontact/klantcontact.types.ts';
 import { bffApiHost } from '../../../../../../../testing/setup.ts';
 import { bffApi } from '../../../../../../../testing/utils.ts';
 import type { ApiResponse } from '../../../../../../../universal/helpers/api.ts';
-import { BFFApiUrls } from '../../../../config/api.ts';
 import { useAppStateStore } from '../../../../../../hooks/useAppStateStore.ts';
+import { BFFApiUrls } from '../../../../config/api.ts';
 
 const BFF_ENDPOINTS = {
   create: BFFApiUrls.KLANTCONTACT_CONTACTGEGEVEN_CREATE.replace(
@@ -37,7 +41,6 @@ const BFF_ENDPOINTS = {
     ''
   ),
 };
-
 
 function getContactgegevenInStore(
   type: 'Email' | 'Telefoonnummer' | 'Postadres'
@@ -68,7 +71,6 @@ describe('useCommunicatieVoorkeuren', () => {
   afterEach(() => {
     vi.useRealTimers();
   });
-
 
   it('useSetCommunicatievoorkeur updates app state when create succeeds with id', async () => {
     const callback = vi.fn();
@@ -278,299 +280,271 @@ describe('useCommunicatieVoorkeuren', () => {
     );
   });
 
+  describe('zaakvoorkeur', () => {
+    function getZaakVoorkeurenInStore() {
+      return useAppStateStore.getState().KLANT_CONTACT.content
+        ?.communicatievoorkeuren?.zaakKanaalVoorkeuren;
+    }
 
-  it('useSetZaakKanaalVoorkeur adds a preference when API succeeds', async () => {
-    const callback = vi.fn();
+    function setZaakVoorkeurenInStore(
+      zaakKanaalVoorkeuren: ZaakKanaalVoorkeurFrontend[]
+    ) {
+      const { KLANT_CONTACT } = useAppStateStore.getState();
+      useAppStateStore.setState({
+        KLANT_CONTACT: {
+          ...KLANT_CONTACT,
+          content: {
+            ...KLANT_CONTACT.content!,
+            communicatievoorkeuren: {
+              ...KLANT_CONTACT.content!.communicatievoorkeuren!,
+              zaakKanaalVoorkeuren,
+            },
+          },
+        } as unknown as ApiResponse<KlantcontactResponseData>,
+      });
+    }
 
-    const contactgegeven = {
-      id: 'cg-zaak-1',
+    // Hetzelfde formaat als ZaakKanaalVoorkeurFrontend uit setZaakKanaalVoorkeur en fetchCommunicatievoorkeuren.
+    function createVoorkeur(
+      zaakIdentificatie: string,
+      contactgegeven: Pick<ContactgegevenFrontend, 'id' | 'type' | 'value'> &
+        Partial<ContactgegevenFrontend>
+    ): ZaakKanaalVoorkeurFrontend {
+      return {
+        zaakIdentificatie,
+        contactgegeven: {
+          isVerified: false,
+          dateModified: null,
+          dateModifiedFormatted: null,
+          ...contactgegeven,
+        },
+      };
+    }
+
+    const voorkeurZaak123 = createVoorkeur('Z-24-0000123', {
+      id: 'cg-zaak-123',
       type: 'Email',
       value: 'test@example.com',
-      isVerified: true,
-    };
-
-    bffApi.post(BFF_ENDPOINTS.zaakVoorkeurSet).reply(200, {
-      status: 'OK',
-      content: contactgegeven,
+    });
+    const voorkeurZaak456 = createVoorkeur('Z-24-0000456', {
+      id: 'cg-zaak-456',
+      type: 'Telefoonnummer',
+      value: '0612345678',
     });
 
-    const { result } = renderHook(() =>
-      useSetZaakKanaalVoorkeur(callback)
-    );
-
-    await act(async () => {
-      await result.current.fetch({
-        payload: {
-          zaakIdentificatie: 'zaak-123',
+    it('useSetZaakKanaalVoorkeur sends the payload the BFF expects', async () => {
+      bffApi
+        .post(BFF_ENDPOINTS.zaakVoorkeurSet, {
+          zaakIdentificatie: voorkeurZaak123.zaakIdentificatie,
           kanaal: 'Email',
           value: 'test@example.com',
-        },
+        })
+        .reply(200, { status: 'OK', content: voorkeurZaak123 });
+
+      const { result } = renderHook(() =>
+        useSetZaakKanaalVoorkeur(vi.fn(), voorkeurZaak123.zaakIdentificatie)
+      );
+
+      await act(async () => {
+        await result.current.fetch({
+          payload: {
+            zaakIdentificatie: voorkeurZaak123.zaakIdentificatie,
+            kanaal: 'Email',
+            value: 'test@example.com',
+          },
+        });
       });
+
+      expect(getZaakVoorkeurenInStore()).toEqual([voorkeurZaak123]);
     });
 
-    const voorkeuren =
-      useAppStateStore.getState().KLANT_CONTACT.content
-        ?.communicatievoorkeuren?.zaakKanaalVoorkeuren;
-
-    expect(voorkeuren).toEqual([
-      {
-        zaakIdentificatie: 'zaak-123',
-        contactgegeven,
-      },
-    ]);
-
-    expect(callback).toHaveBeenCalledWith(contactgegeven, true);
-  });
-
-
-    it('useSetZaakKanaalVoorkeur replaces an existing preference', async () => {
+    it('useSetZaakKanaalVoorkeur stores the voorkeur from the BFF response', async () => {
       const callback = vi.fn();
 
-      const huidigeState = useAppStateStore.getState();
+      bffApi
+        .post(BFF_ENDPOINTS.zaakVoorkeurSet)
+        .reply(200, { status: 'OK', content: voorkeurZaak123 });
 
-  useAppStateStore.setState({
-    KLANT_CONTACT: {
-      ...huidigeState.KLANT_CONTACT,
-      status: 'OK',
-      content: {
-        ...huidigeState.KLANT_CONTACT.content!,
-        communicatievoorkeuren: {
-          ...huidigeState.KLANT_CONTACT.content!.communicatievoorkeuren!,
-          zaakKanaalVoorkeuren: [
-            {
-              zaakIdentificatie: 'zaak-123',
-              contactgegeven: {
-                id: 'cg-old',
-                type: 'Email',
-                value: 'oud@example.com',
-                isVerified: true,
-                dateModified: null,
-                dateModifiedFormatted: null,
-              },
-            },
-          ],
-        },
-      },
-    },
-  });
+      const { result } = renderHook(() =>
+        useSetZaakKanaalVoorkeur(callback, voorkeurZaak123.zaakIdentificatie)
+      );
 
-  const nieuwContactgegeven = {
-    id: 'cg-new',
-    type: 'Telefoonnummer',
-    value: '0612345678',
-    isVerified: true,
-  };
-
-  bffApi.post(BFF_ENDPOINTS.zaakVoorkeurSet).reply(200, {
-    status: 'OK',
-    content: nieuwContactgegeven,
-  });
-
-  const { result } = renderHook(() =>
-    useSetZaakKanaalVoorkeur(callback)
-  );
-
-  await act(async () => {
-    await result.current.fetch({
-      payload: {
-        zaakIdentificatie: 'zaak-123',
-        kanaal: 'Telefoonnummer',
-        value: '0612345678',
-      },
-    });
-  });
-
-  const voorkeuren =
-    useAppStateStore.getState().KLANT_CONTACT.content
-      ?.communicatievoorkeuren?.zaakKanaalVoorkeuren;
-
-  expect(voorkeuren).toHaveLength(1);
-
-  expect(voorkeuren?.[0]).toEqual({
-    zaakIdentificatie: 'zaak-123',
-    contactgegeven: nieuwContactgegeven,
-  });
-
-  expect(callback).toHaveBeenCalledWith(
-    nieuwContactgegeven,
-    true
-  );
-});
-
-
-
-
-  it('useVerwijderZaakKanaalVoorkeur removes only the selected case', async () => {
-    const huidigeState = useAppStateStore.getState();
-
-    const voorkeurZaak123 = {
-      zaakIdentificatie: 'zaak-123',
-      contactgegeven: {
-        id: 'cg-123',
-        type: 'Email' as const,
-        value: 'test@example.com',
-        isVerified: true,
-        dateModified: null,
-        dateModifiedFormatted: null,
-      },
-    };
-
-    const voorkeurZaak456 = {
-      zaakIdentificatie: 'zaak-456',
-      contactgegeven: {
-        id: 'cg-456',
-        type: 'Telefoonnummer' as const,
-        value: '0612345678',
-        isVerified: true,
-        dateModified: null,
-        dateModifiedFormatted: null,
-      },
-    };
-
-    useAppStateStore.setState({
-      KLANT_CONTACT: {
-        ...huidigeState.KLANT_CONTACT,
-        status: 'OK',
-        content: {
-          ...huidigeState.KLANT_CONTACT.content!,
-          communicatievoorkeuren: {
-            ...huidigeState.KLANT_CONTACT.content!.communicatievoorkeuren!,
-            zaakKanaalVoorkeuren: [
-              voorkeurZaak123,
-              voorkeurZaak456,
-            ],
+      await act(async () => {
+        await result.current.fetch({
+          payload: {
+            zaakIdentificatie: voorkeurZaak123.zaakIdentificatie,
+            kanaal: 'Email',
+            value: 'test@example.com',
           },
-        },
-      },
-    });
-
-    bffApi.post(BFF_ENDPOINTS.zaakVoorkeurDelete).reply(200, {
-      status: 'OK',
-      content: null,
-    });
-
-    const { result } = renderHook(() =>
-      useVerwijderZaakKanaalVoorkeur('zaak-123')
-    );
-
-    await act(async () => {
-      await result.current();
-    });
-
-    const voorkeuren =
-      useAppStateStore.getState().KLANT_CONTACT.content
-        ?.communicatievoorkeuren?.zaakKanaalVoorkeuren;
-
-    expect(voorkeuren).toEqual([voorkeurZaak456]);
-  });
-
-  
-  it('useVerwijderZaakKanaalVoorkeur keeps the preference when delete fails', async () => {
-    const huidigeState = useAppStateStore.getState();
-
-    const bestaandeVoorkeur = {
-      zaakIdentificatie: 'zaak-123',
-      contactgegeven: {
-        id: 'cg-123',
-        type: 'Email' as const,
-        value: 'test@example.com',
-        isVerified: true,
-        dateModified: null,
-        dateModifiedFormatted: null,
-      },
-    };
-
-    useAppStateStore.setState({
-      KLANT_CONTACT: {
-        ...huidigeState.KLANT_CONTACT,
-        status: 'OK',
-        content: {
-          ...huidigeState.KLANT_CONTACT.content!,
-          communicatievoorkeuren: {
-            ...huidigeState.KLANT_CONTACT.content!.communicatievoorkeuren!,
-            zaakKanaalVoorkeuren: [bestaandeVoorkeur],
-          },
-        },
-      },
-    });
-
-    bffApi.post(BFF_ENDPOINTS.zaakVoorkeurDelete).reply(200, {
-      status: 'ERROR',
-      message: 'Delete failed',
-      content: null,
-    });
-
-    const { result } = renderHook(() =>
-      useVerwijderZaakKanaalVoorkeur('zaak-123')
-    );
-
-    await act(async () => {
-      await result.current();
-    });
-
-    const voorkeuren =
-      useAppStateStore.getState().KLANT_CONTACT.content
-        ?.communicatievoorkeuren?.zaakKanaalVoorkeuren;
-
-    expect(voorkeuren).toEqual([bestaandeVoorkeur]);
-  });
-
-  it('useSetZaakKanaalVoorkeur keeps the existing preference when API fails', async () => {
-    const callback = vi.fn();
-    const huidigeState = useAppStateStore.getState();
-
-    const bestaandeVoorkeur = {
-      zaakIdentificatie: 'zaak-123',
-      contactgegeven: {
-        id: 'cg-old',
-        type: 'Email' as const,
-        value: 'oud@example.com',
-        isVerified: true,
-        dateModified: null,
-        dateModifiedFormatted: null,
-      },
-    };
-
-    useAppStateStore.setState({
-      KLANT_CONTACT: {
-        ...huidigeState.KLANT_CONTACT,
-        status: 'OK',
-        content: {
-          ...huidigeState.KLANT_CONTACT.content!,
-          communicatievoorkeuren: {
-            ...huidigeState.KLANT_CONTACT.content!.communicatievoorkeuren!,
-            zaakKanaalVoorkeuren: [bestaandeVoorkeur],
-          },
-        },
-      },
-    });
-
-    bffApi.post(BFF_ENDPOINTS.zaakVoorkeurSet).reply(200, {
-      status: 'ERROR',
-      message: 'Set failed',
-      content: null,
-    });
-
-    const { result } = renderHook(() =>
-      useSetZaakKanaalVoorkeur(callback)
-    );
-
-    await act(async () => {
-      await result.current.fetch({
-        payload: {
-          zaakIdentificatie: 'zaak-123',
-          kanaal: 'Telefoonnummer',
-          value: '0612345678',
-        },
+        });
       });
+
+      expect(getZaakVoorkeurenInStore()).toEqual([voorkeurZaak123]);
+      expect(callback).toHaveBeenCalledWith(voorkeurZaak123, true);
     });
 
-    const voorkeuren =
-      useAppStateStore.getState().KLANT_CONTACT.content
-        ?.communicatievoorkeuren?.zaakKanaalVoorkeuren;
+    it('useSetZaakKanaalVoorkeur replaces the voorkeur of the same zaak and keeps the others', async () => {
+      const callback = vi.fn();
+      const oudeVoorkeur = createVoorkeur(voorkeurZaak123.zaakIdentificatie, {
+        id: 'cg-oud',
+        type: 'Telefoonnummer',
+        value: '0687654321',
+      });
+      setZaakVoorkeurenInStore([oudeVoorkeur, voorkeurZaak456]);
 
-    expect(voorkeuren).toEqual([bestaandeVoorkeur]);
-    expect(callback).toHaveBeenCalledWith(null, false);
+      bffApi
+        .post(BFF_ENDPOINTS.zaakVoorkeurSet)
+        .reply(200, { status: 'OK', content: voorkeurZaak123 });
+
+      const { result } = renderHook(() =>
+        useSetZaakKanaalVoorkeur(callback, voorkeurZaak123.zaakIdentificatie)
+      );
+
+      await act(async () => {
+        await result.current.fetch({
+          payload: {
+            zaakIdentificatie: voorkeurZaak123.zaakIdentificatie,
+            kanaal: 'Email',
+            value: 'test@example.com',
+          },
+        });
+      });
+
+      expect(getZaakVoorkeurenInStore()).toEqual([
+        voorkeurZaak456,
+        voorkeurZaak123,
+      ]);
+    });
+
+    it('useSetZaakKanaalVoorkeur keeps the existing voorkeuren when the BFF fails', async () => {
+      const callback = vi.fn();
+      setZaakVoorkeurenInStore([voorkeurZaak123]);
+
+      bffApi
+        .post(BFF_ENDPOINTS.zaakVoorkeurSet)
+        .reply(200, { status: 'ERROR', message: 'Set failed', content: null });
+
+      const { result } = renderHook(() =>
+        useSetZaakKanaalVoorkeur(callback, voorkeurZaak123.zaakIdentificatie)
+      );
+
+      await act(async () => {
+        await result.current.fetch({
+          payload: {
+            zaakIdentificatie: voorkeurZaak123.zaakIdentificatie,
+            kanaal: 'Telefoonnummer',
+            value: '0612345678',
+          },
+        });
+      });
+
+      expect(getZaakVoorkeurenInStore()).toEqual([voorkeurZaak123]);
+      expect(callback).toHaveBeenCalledWith(null, false);
+    });
+
+    it('useSetZaakKanaalVoorkeur does not touch the state when there are no communicatievoorkeuren', async () => {
+      const callback = vi.fn();
+      const { KLANT_CONTACT } = useAppStateStore.getState();
+      useAppStateStore.setState({
+        KLANT_CONTACT: {
+          ...KLANT_CONTACT,
+          content: { ...KLANT_CONTACT.content!, communicatievoorkeuren: null },
+        } as unknown as ApiResponse<KlantcontactResponseData>,
+      });
+
+      bffApi
+        .post(BFF_ENDPOINTS.zaakVoorkeurSet)
+        .reply(200, { status: 'OK', content: voorkeurZaak123 });
+
+      const { result } = renderHook(() =>
+        useSetZaakKanaalVoorkeur(callback, voorkeurZaak123.zaakIdentificatie)
+      );
+
+      await act(async () => {
+        await result.current.fetch({
+          payload: {
+            zaakIdentificatie: voorkeurZaak123.zaakIdentificatie,
+            kanaal: 'Email',
+            value: 'test@example.com',
+          },
+        });
+      });
+
+      expect(
+        useAppStateStore.getState().KLANT_CONTACT.content
+          ?.communicatievoorkeuren
+      ).toBeNull();
+      expect(callback).toHaveBeenCalledWith(voorkeurZaak123, true);
+    });
+
+    it('useSetZaakKanaalVoorkeur houdt isError per zaak bij, zodat één mislukte zaak de andere niet als mislukt toont', async () => {
+      bffApi
+        .post(BFF_ENDPOINTS.zaakVoorkeurSet)
+        .reply(200, { status: 'ERROR', message: 'Set failed', content: null });
+
+      const { result } = renderHook(() => ({
+        zaak123: useSetZaakKanaalVoorkeur(
+          vi.fn(),
+          voorkeurZaak123.zaakIdentificatie
+        ),
+        zaak456: useSetZaakKanaalVoorkeur(
+          vi.fn(),
+          voorkeurZaak456.zaakIdentificatie
+        ),
+      }));
+
+      await act(async () => {
+        await result.current.zaak123.fetch({
+          payload: {
+            zaakIdentificatie: voorkeurZaak123.zaakIdentificatie,
+            kanaal: 'Email',
+            value: 'test@example.com',
+          },
+        });
+      });
+
+      expect(result.current.zaak123.isError).toBe(true);
+      expect(result.current.zaak456.isError).toBe(false);
+    });
+
+    it('useVerwijderZaakKanaalVoorkeur sends the zaakIdentificatie and removes only that zaak', async () => {
+      setZaakVoorkeurenInStore([voorkeurZaak123, voorkeurZaak456]);
+
+      bffApi
+        .post(BFF_ENDPOINTS.zaakVoorkeurDelete, {
+          zaakIdentificatie: voorkeurZaak123.zaakIdentificatie,
+        })
+        .reply(200, { status: 'OK', content: null });
+
+      const { result } = renderHook(() =>
+        useVerwijderZaakKanaalVoorkeur(voorkeurZaak123.zaakIdentificatie)
+      );
+
+      await act(async () => {
+        await result.current();
+      });
+
+      expect(getZaakVoorkeurenInStore()).toEqual([voorkeurZaak456]);
+    });
+
+    it('useVerwijderZaakKanaalVoorkeur keeps the voorkeur when the BFF fails', async () => {
+      setZaakVoorkeurenInStore([voorkeurZaak123]);
+
+      bffApi.post(BFF_ENDPOINTS.zaakVoorkeurDelete).reply(200, {
+        status: 'ERROR',
+        message: 'Delete failed',
+        content: null,
+      });
+
+      const { result } = renderHook(() =>
+        useVerwijderZaakKanaalVoorkeur(voorkeurZaak123.zaakIdentificatie)
+      );
+
+      await act(async () => {
+        await result.current();
+      });
+
+      expect(getZaakVoorkeurenInStore()).toEqual([voorkeurZaak123]);
+    });
   });
-
 });

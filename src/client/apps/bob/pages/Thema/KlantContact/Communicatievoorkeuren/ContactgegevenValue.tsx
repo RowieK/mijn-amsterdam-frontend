@@ -1,13 +1,10 @@
 import { useState } from 'react';
 
 import { Alert, Badge, Paragraph } from '@amsterdam/design-system-react';
-import { differenceInCalendarMonths } from 'date-fns';
 import { generatePath } from 'react-router';
 
-import {
-  ContactgegevenTypeEnum,
-  MAXIMUM_AGE_BEFORE_VALIDATION_MONTHS,
-} from './CommunicatieVoorkeuren-config.ts';
+import { ContactgegevenTypeEnum } from './CommunicatieVoorkeuren-config.ts';
+import styles from './CommunicatieVoorkeuren.module.scss';
 import { useCommunicatieVoorkeurVerwijderen } from './useCommunicatieVoorkeuren.ts';
 import type { ContactgegevenFrontend } from '../../../../../../../server/services/klantcontact/klantcontact-profieldienst-types.ts';
 import { MaRouterLink } from '../../../../../../components/MaLink/MaLink.tsx';
@@ -32,10 +29,31 @@ function Value({
   );
 }
 
+const REMOVE_TEXTS = {
+  Email: {
+    buttonLabel: 'verwijder',
+    title: 'E-mailadres verwijderen',
+    question:
+      'Weet u zeker dat u dit e-mailadres wilt verwijderen? U ontvangt dan geen e-mails meer van de gemeente Amsterdam.',
+    error:
+      'Er is iets misgegaan bij het verwijderen van dit e-mailadres. Probeer het later opnieuw.',
+  },
+  ApplicatieId: {
+    buttonLabel: 'ontkoppel',
+    title: 'Amsterdam App ontkoppelen',
+    question:
+      'Weet u zeker dat u de Amsterdam App wilt ontkoppelen? U ontvangt dan geen meldingen meer van Mijn Amsterdam in de app.',
+    error:
+      'Er is iets misgegaan bij het ontkoppelen van de Amsterdam App. Probeer het later opnieuw.',
+  },
+} as const;
+
 function ContactgegevenRemoveModal({
   contactgegeven,
+  texts,
 }: {
   contactgegeven: ContactgegevenFrontend;
+  texts: (typeof REMOVE_TEXTS)[keyof typeof REMOVE_TEXTS];
 }) {
   const [isError, setIsError] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -43,9 +61,9 @@ function ContactgegevenRemoveModal({
 
   return (
     <ModalAndButton
-      buttonLabel="Verwijderen"
+      buttonLabel={texts.buttonLabel}
       buttonVariant="ma-link-like"
-      modal={{ title: 'E-mailadres verwijderen' }}
+      modal={{ title: texts.title }}
       actions={[
         {
           label: isLoading ? (
@@ -66,7 +84,6 @@ function ContactgegevenRemoveModal({
               setIsError(true);
               return false;
             }
-            //
 
             return true;
           },
@@ -79,10 +96,7 @@ function ContactgegevenRemoveModal({
         },
       ]}
     >
-      <Paragraph className="ams-mb-m">
-        Weet u zeker dat u dit e-mailadres wilt verwijderen? U ontvangt dan geen
-        e-mails meer van de gemeente Amsterdam.
-      </Paragraph>
+      <Paragraph className="ams-mb-m">{texts.question}</Paragraph>
       {isError && (
         <Alert
           severity="error"
@@ -90,10 +104,7 @@ function ContactgegevenRemoveModal({
           heading="Verwijderen mislukt"
           headingLevel={2}
         >
-          <Paragraph>
-            Er is iets misgegaan bij het verwijderen van dit e-mailadres.
-            Probeer het later opnieuw.
-          </Paragraph>
+          <Paragraph>{texts.error}</Paragraph>
         </Alert>
       )}
     </ModalAndButton>
@@ -114,84 +125,96 @@ export function ContactgegevenValue({
       action,
     });
 
+  const hasValue = !!contactgegeven.value;
+
   switch (contactgegeven.type) {
-    case ContactgegevenTypeEnum.Email: {
-      const isOld =
-        !!(contactgegeven.dateModified && contactgegeven.isVerified) &&
-        differenceInCalendarMonths(new Date(), contactgegeven.dateModified) >=
-          MAXIMUM_AGE_BEFORE_VALIDATION_MONTHS;
-      const needsValidation =
-        !!contactgegeven.value && (!contactgegeven.isVerified || isOld);
-      return (
-        <>
-          <Value contactgegeven={contactgegeven} />
-          {contactgegeven.value && contactgegeven.isVerified && (
-            <>(Laatst gewijzigd op {contactgegeven.dateModifiedFormatted})</>
-          )}
-          <br />
-          {needsValidation && (
-            <>
-              <Badge label="!" color="red" /> Dit e-mailadres is nog niet
-              gevalideerd.{' '}
-              <MaRouterLink href={getRoute('1', 'valideren')}>
-                {isOld ? 'Opnieuw valideren' : 'Nu valideren'}
-              </MaRouterLink>
-            </>
-          )}
-          {contactgegeven.value && (
-            <>
-              {needsValidation && ' of '}
-              <ContactgegevenRemoveModal contactgegeven={contactgegeven} />{' '}
-            </>
-          )}
-          {!contactgegeven.value && (
-            <MaRouterLink href={getRoute('1', 'instellen')}>
-              Geef uw e-mailadres aan ons door
-            </MaRouterLink>
-          )}
-        </>
-      );
-    }
+    case ContactgegevenTypeEnum.Email:
     case ContactgegevenTypeEnum.Telefoonnummer: {
+      const isEmail = contactgegeven.type === ContactgegevenTypeEnum.Email;
       return (
-        <Paragraph>
+        <div>
+          {!isEmail && hasValue && (
+            <span className={styles.Muted}>standaard: </span>
+          )}
           <Value contactgegeven={contactgegeven} />
-          <br />
-        </Paragraph>
+          {hasValue && contactgegeven.isVerified && (
+            <>(laatst gevalideerd op {contactgegeven.dateModifiedFormatted})</>
+          )}
+          {hasValue && !contactgegeven.isVerified && (
+            <>
+              <Badge label="!" color="red" />{' '}
+              {isEmail ? 'Dit e-mailadres' : 'Dit telefoonnummer'} is nog niet
+              gevalideerd.
+            </>
+          )}
+          <span className={styles.Actions}>
+            {hasValue ? (
+              <>
+                <MaRouterLink href={getRoute('1', 'valideren')}>
+                  {contactgegeven.isVerified ? 'valideer opnieuw' : 'valideer'}
+                </MaRouterLink>
+                <MaRouterLink href={getRoute('1', 'wijzigen')}>
+                  wijzig
+                </MaRouterLink>
+                {isEmail && (
+                  <ContactgegevenRemoveModal
+                    contactgegeven={contactgegeven}
+                    texts={REMOVE_TEXTS.Email}
+                  />
+                )}
+              </>
+            ) : (
+              <MaRouterLink href={getRoute('1', 'instellen')}>
+                {isEmail
+                  ? 'Geef uw e-mailadres aan ons door'
+                  : 'Geef uw mobiele telefoonnummer aan ons door'}
+              </MaRouterLink>
+            )}
+          </span>
+        </div>
       );
     }
     case ContactgegevenTypeEnum.ApplicatieId: {
       return (
-        <Paragraph>
+        <div>
+          {hasValue && <>Amsterdam App ID: </>}
           <Value
             contactgegeven={contactgegeven}
             noValueText="Nog niet gekoppeld"
           />
-          {contactgegeven.value && contactgegeven.isVerified && (
-            <>(Gekoppeld op {contactgegeven.dateModifiedFormatted})</>
+          {hasValue && contactgegeven.isVerified && (
+            <>(gedownload op {contactgegeven.dateModifiedFormatted})</>
           )}
-        </Paragraph>
+          {hasValue && (
+            <span className={styles.Actions}>
+              <ContactgegevenRemoveModal
+                contactgegeven={contactgegeven}
+                texts={REMOVE_TEXTS.ApplicatieId}
+              />
+            </span>
+          )}
+        </div>
       );
     }
-    // case ContactgegevenType.Berichtenbox: {
-    //   return (
-    //     <Paragraph>
-    //       <Value
-    //         contactgegeven={contactgegeven}
-    //         noValueText="Nog niet gekoppeld"
-    //       />
-    //     </Paragraph>
-    //   );
-    // }
-    // Add more cases for other communication mediums
+    // De profielservice ondersteunt de berichtenbox nog niet (de BFF zet hem op disabled): er is nog niets om te koppelen.
+    case ContactgegevenTypeEnum.Berichtenbox: {
+      return (
+        <div>
+          <Value
+            contactgegeven={contactgegeven}
+            noValueText="Nog niet gekoppeld"
+          />
+        </div>
+      );
+    }
     case ContactgegevenTypeEnum.Postadres: {
       return (
-        <Paragraph>
+        <div>
           <Value
             contactgegeven={contactgegeven}
             noValueText="Geen postadres bekend"
           />
-        </Paragraph>
+        </div>
       );
     }
     default:

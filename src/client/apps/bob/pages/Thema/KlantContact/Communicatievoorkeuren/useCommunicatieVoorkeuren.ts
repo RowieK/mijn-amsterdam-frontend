@@ -1,5 +1,3 @@
-import { useCallback } from 'react';
-
 import { useParams } from 'react-router';
 
 import { ContactgegevenByTypeLabels } from './CommunicatieVoorkeuren-config.ts';
@@ -14,7 +12,6 @@ import {
   capitalizeFirstLetter,
   lowercaseFirstLetter,
 } from '../../../../../../../universal/helpers/text.ts';
-import { BFFApiUrls } from '../../../../config/api.ts';
 import {
   sendFormPostRequest,
   useBffApi,
@@ -23,66 +20,63 @@ import {
   useAppStateStore,
   type AppStateStore,
 } from '../../../../../../hooks/useAppStateStore.ts';
+import { BFFApiUrls } from '../../../../config/api.ts';
 import {
   type InstelAction,
   themaConfig,
 } from '../KlantContact-thema-config.ts';
 
+type UpdateProps = {
+  contactgegeven: Partial<Omit<ContactgegevenFrontend, 'type'>> & {
+    type: ContactgegevenType;
+  };
+  appState: AppStateStore;
+};
 
-type UpdateProps =
-  | {
-      contactgegeven: Partial<Omit<ContactgegevenFrontend, 'type'>> & {
-        type: ContactgegevenType;
-      };
-      appState: AppStateStore;
-      zaakKanaalVoorkeuren?: never;
-    }
-  | {
-      contactgegeven?: never;
-      appState: AppStateStore;
-      zaakKanaalVoorkeuren: ZaakKanaalVoorkeurFrontend[];
-    };
-
-function updateCommunicatievoorkeurState(props: UpdateProps) {
-  const { appState } = props;
-
-  if (props.zaakKanaalVoorkeuren !== undefined) {
-    const klantContact = appState.KLANT_CONTACT;
-
-    if (!klantContact?.content?.communicatievoorkeuren) {
-      return;
-    }
-
-    appState.setAppState({
-      KLANT_CONTACT: {
-        ...klantContact,
-        content: {
-          ...klantContact.content,
-          communicatievoorkeuren: {
-            ...klantContact.content.communicatievoorkeuren,
-            zaakKanaalVoorkeuren: props.zaakKanaalVoorkeuren,
-          },
+function updateCommunicatievoorkeurState({
+  contactgegeven,
+  appState,
+}: UpdateProps) {
+  appState.mergeAppState('KLANT_CONTACT', {
+    content: {
+      communicatievoorkeuren: {
+        standaardContactgegevens: {
+          [contactgegeven.type]: contactgegeven,
         },
       },
-    });
+    },
+  });
+}
 
+// mergeAppState voegt arrays per index samen, dus de lijst met zaakvoorkeuren wordt vervangen.
+// De store wordt hier direct gelezen: na een request is de render-snapshot van de hook verouderd.
+function updateZaakKanaalVoorkeurenState(
+  update: (
+    huidige: ZaakKanaalVoorkeurFrontend[]
+  ) => ZaakKanaalVoorkeurFrontend[]
+) {
+  const { KLANT_CONTACT, setAppState } = useAppStateStore.getState();
+  const communicatievoorkeuren = KLANT_CONTACT.content?.communicatievoorkeuren;
+
+  if (!KLANT_CONTACT.content || !communicatievoorkeuren) {
     return;
   }
 
-  if (props.contactgegeven) {
-    appState.mergeAppState('KLANT_CONTACT', {
+  setAppState({
+    KLANT_CONTACT: {
+      ...KLANT_CONTACT,
       content: {
+        ...KLANT_CONTACT.content,
         communicatievoorkeuren: {
-          standaardContactgegevens: {
-            [props.contactgegeven.type]: props.contactgegeven,
-          },
+          ...communicatievoorkeuren,
+          zaakKanaalVoorkeuren: update(
+            communicatievoorkeuren.zaakKanaalVoorkeuren ?? []
+          ),
         },
       },
-    });
-  }
+    },
+  });
 }
-
-
 
 export function useSetCommunicatievoorkeur(
   onCallback: (
@@ -113,103 +107,56 @@ export function useSetCommunicatievoorkeur(
   );
 }
 
-
 export function useSetZaakKanaalVoorkeur(
   onCallback: (
-    contactgegeven: ContactgegevenFrontend | null,
+    voorkeur: ZaakKanaalVoorkeurFrontend | null,
     success: boolean
-  ) => void
+  ) => void,
+  zaakIdentificatie: string
 ) {
-  const appState = useAppStateStore();
-
+  // useBffApi bewaart isLoading en isError per cacheKey. Een eigen key per zaak voorkomt dat het opslaan van de
+  // ene zaak bij alle andere zaken op de pagina als bezig of mislukt wordt getoond.
   return useBffApi<
-    ContactgegevenFrontend,
+    ZaakKanaalVoorkeurFrontend,
     ZaakKanaalVoorkeurPayloadFrontend
-  >(BFFApiUrls.KLANTCONTACT_ZAAKVOORKEUR_SET, {
+  >(`zaakvoorkeur-set-${zaakIdentificatie}`, {
+    url: BFFApiUrls.KLANTCONTACT_ZAAKVOORKEUR_SET,
     fetchImmediately: false,
     sendRequest: async (url, init) => {
-      return sendFormPostRequest<ContactgegevenFrontend>(
-        url,
-        init
-      ).then((response) => {
-        if (
-          response.status === 'OK' &&
-          response.content?.id &&
-          init?.payload
-        ) {
-          const huidigeVoorkeuren =
-            appState.KLANT_CONTACT.content
-              ?.communicatievoorkeuren
-              ?.zaakKanaalVoorkeuren ?? [];
-
-          const zaakIdentificatie =
-            init.payload.zaakIdentificatie;
-
-          const nieuweVoorkeuren = [
-            ...huidigeVoorkeuren.filter(
-              (voorkeur: ZaakKanaalVoorkeurFrontend) =>
-                voorkeur.zaakIdentificatie !== zaakIdentificatie
-            ),
-            {
-              zaakIdentificatie,
-              contactgegeven: response.content,
-            },
-          ];
-
-          updateCommunicatievoorkeurState({
-            appState,
-            zaakKanaalVoorkeuren: nieuweVoorkeuren,
-          });
+      return sendFormPostRequest<ZaakKanaalVoorkeurFrontend>(url, init).then(
+        (response) => {
+          const voorkeur = response.content;
+          if (response.status === 'OK' && voorkeur) {
+            updateZaakKanaalVoorkeurenState((huidige) => [
+              ...huidige.filter(
+                (v) => v.zaakIdentificatie !== voorkeur.zaakIdentificatie
+              ),
+              voorkeur,
+            ]);
+          }
+          onCallback(voorkeur ?? null, response.status === 'OK');
+          return response;
         }
-
-        onCallback(
-          response.content ?? null,
-          response.status === 'OK'
-        );
-
-        return response;
-      });
+      );
     },
   });
 }
 
-
-export function useVerwijderZaakKanaalVoorkeur(
-  zaakIdentificatie: string
-) {
-  const appState = useAppStateStore();
-
+export function useVerwijderZaakKanaalVoorkeur(zaakIdentificatie: string) {
   return function handleDelete() {
     return sendFormPostRequest<null>(
       BFFApiUrls.KLANTCONTACT_ZAAKVOORKEUR_DELETE,
-      {
-        payload: {
-          zaakIdentificatie,
-        },
-      }
+      { payload: { zaakIdentificatie } }
     ).then((response) => {
       if (response.status === 'OK') {
-        const huidigeVoorkeuren =
-          appState.KLANT_CONTACT.content
-            ?.communicatievoorkeuren
-            ?.zaakKanaalVoorkeuren ?? [];
-
-        const nieuweVoorkeuren = huidigeVoorkeuren.filter(
-          (voorkeur: ZaakKanaalVoorkeurFrontend) =>
-            voorkeur.zaakIdentificatie !== zaakIdentificatie
+        updateZaakKanaalVoorkeurenState((huidige) =>
+          huidige.filter((v) => v.zaakIdentificatie !== zaakIdentificatie)
         );
-
-        updateCommunicatievoorkeurState({
-          appState,
-          zaakKanaalVoorkeuren: nieuweVoorkeuren,
-        });
       }
-
       return response;
     });
   };
 }
-
 
 export function useVerifyCommunicatievoorkeur(
   onCallback: (verified: boolean) => void
@@ -289,17 +236,5 @@ export function useCommunicatieVoorkeurInstellen() {
     title: `${params.action ? capitalizeFirstLetter(params.action) : 'Instellen'} ${params.contactgegeven ? lowercaseFirstLetter(ContactgegevenByTypeLabels[params.contactgegeven] ?? '') : 'contactgegeven'}`,
     routeConfig: themaConfig.detailPageContactgegevenInstellen.route,
     contactgegevenType: params.contactgegeven,
-  };
-}
-
-export function useCommunicatieVoorkeurBevestigen() {
-  const confirmSetting = useCallback(function confirmSetting(
-    isChecked: boolean
-  ) {
-    // eslint-disable-next-line no-console -- To be implemented
-    console.info('Confirm setting:', isChecked);
-  }, []);
-  return {
-    confirmSetting,
   };
 }

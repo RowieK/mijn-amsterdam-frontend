@@ -40,9 +40,9 @@ export function ContactMomenten({
       zaken={contactmomenten}
       maxItems={tableConfigs.contactmomenten.maxItems}
       displayProps={tableConfigs.contactmomenten.displayProps}
-      listPageLinkTitle="Bekijk alle contactmomenten"
+      listPageLinkTitle="Toon alle"
       listPageRoute={tableConfigs.contactmomenten.listPageRoute}
-      title="Contactmomenten"
+      title="Mijn contactmomenten"
     />
   );
 }

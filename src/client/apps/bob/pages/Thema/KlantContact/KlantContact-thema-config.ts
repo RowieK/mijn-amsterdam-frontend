@@ -40,6 +40,10 @@ export const themaConfig = {
     communicatievoorkeuren: {
       active: isEnabled('KLANT_CONTACT.communicatievoorkeuren'),
     },
+    // Zelfde toggle als de BFF-routes ZAAKVOORKEUR_SET en _DELETE (klantcontact-service-config.ts).
+    zaakvoorkeuren: {
+      active: isEnabled('KLANT_CONTACT.zaakvoorkeuren'),
+    },
   },
   profileTypes: ['private'],
   redactedScope: 'content',
@@ -65,7 +69,7 @@ export const themaConfig = {
   detailPageContactgegevenInstellen: {
     route: {
       get path(): string {
-        return `${themaConfig.route.path}/contactgegeven-instellen/:contactgegeven/:step`;
+        return `${themaConfig.route.path}/contactgegeven-instellen/:contactgegeven/:step/:action?`;
       },
       documentTitle: `Contactgegeven instellen | ${THEMA_TITLE}`,
       trackingUrl: null,

@@ -1,217 +1,190 @@
 import { useEffect, useState } from 'react';
-import { useAppStateStore } from '../../../../../../hooks/useAppStateStore.ts';
 
 import {
   Alert,
   Button,
-  Heading,
+  Field,
+  FieldSet,
   Paragraph,
+  Radio,
 } from '@amsterdam/design-system-react';
 
+import {
+  formatZaakKanaal,
+  getVerifiedZaakKanalen,
+} from './CommunicatieVoorkeuren-helpers.ts';
 import {
   useSetZaakKanaalVoorkeur,
   useVerwijderZaakKanaalVoorkeur,
 } from './useCommunicatieVoorkeuren.ts';
 import type {
-  ContactgegevenFrontend,
+  ContactgegevenPerTypeFrontend,
+  ZaakKanaal,
+  ZaakKanaalVoorkeurFrontend,
 } from '../../../../../../../server/services/klantcontact/klantcontact-profieldienst-types.ts';
+import { Spinner } from '../../../../../../components/Spinner/Spinner.tsx';
+
+const STANDAARD = 'standaard';
+
+type Keuze = typeof STANDAARD | ZaakKanaal;
 
 type ZaakKanaalVoorkeurProps = {
   zaakIdentificatie: string;
-  contactgegevens: ContactgegevenFrontend[];
+  omschrijving?: string;
+  standaardContactgegevens: ContactgegevenPerTypeFrontend | null;
+  voorkeur?: ZaakKanaalVoorkeurFrontend;
 };
 
 export function ZaakKanaalVoorkeur({
   zaakIdentificatie,
-  contactgegevens,
+  omschrijving,
+  standaardContactgegevens,
+  voorkeur,
 }: ZaakKanaalVoorkeurProps) {
-  const [gekozenContactgegeven, setGekozenContactgegeven] =
-    useState('standaard');
-  const zaakKanaalVoorkeuren = useAppStateStore(
-  (state) =>
-    state.KLANT_CONTACT.content?.communicatievoorkeuren
-      ?.zaakKanaalVoorkeuren
-);
+  const kanalen = getVerifiedZaakKanalen(standaardContactgegevens);
 
-const bestaandeVoorkeur = zaakKanaalVoorkeuren?.find(
-  (voorkeur) =>
-    voorkeur.zaakIdentificatie === zaakIdentificatie
-);
+  // De voorkeur van de zaak is een eigen adres met dezelfde waarde als een standaardadres. Het id verschilt dus,
+  // daarom wordt op kanaal en waarde vergeleken.
+  const huidigeKeuze: Keuze | null = voorkeur
+    ? (kanalen.find(
+        ({ type, value }) =>
+          type === voorkeur.contactgegeven.type &&
+          value === voorkeur.contactgegeven.value
+      )?.type ?? null)
+    : STANDAARD;
 
-useEffect(() => {
-  setGekozenContactgegeven(
-    bestaandeVoorkeur?.contactgegeven.id ?? 'standaard'
-  );
-}, [bestaandeVoorkeur?.contactgegeven?.id, zaakIdentificatie]);
+  const [keuze, setKeuze] = useState<Keuze | null>(huidigeKeuze);
   const [isSaved, setIsSaved] = useState(false);
   const [isDeleteError, setIsDeleteError] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const { fetch, isLoading, isError } = useSetZaakKanaalVoorkeur(
-    (_contactgegeven, success) => {
-      setIsSaved(success);
-    }
-  );
+  useEffect(() => {
+    setKeuze(huidigeKeuze);
+  }, [huidigeKeuze]);
 
-  const verwijderZaakKanaalVoorkeur =
-    useVerwijderZaakKanaalVoorkeur(zaakIdentificatie);
+  const {
+    fetch: setVoorkeur,
+    isLoading: isSaving,
+    isError: isSaveError,
+  } = useSetZaakKanaalVoorkeur((_voorkeur, success) => {
+    setIsSaved(success);
+  }, zaakIdentificatie);
+  const verwijderVoorkeur = useVerwijderZaakKanaalVoorkeur(zaakIdentificatie);
 
-  const geverifieerdeContactgegevens = contactgegevens.filter(
-    (contactgegeven) =>
-      contactgegeven.isVerified &&
-      contactgegeven.value &&
-      (contactgegeven.type === 'Email' ||
-        contactgegeven.type === 'Telefoonnummer')
-  );
+  const isBusy = isSaving || isDeleting;
+  const isChanged = keuze !== null && keuze !== huidigeKeuze;
 
-  const handleSubmit: React.FormEventHandler<HTMLFormElement> = async (
-    event
-  ) => {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSaved(false);
     setIsDeleteError(false);
 
-    if (gekozenContactgegeven === 'standaard') {
+    if (keuze === STANDAARD) {
       setIsDeleting(true);
-
-      try {
-        const response = await verwijderZaakKanaalVoorkeur();
-        setIsSaved(response.status === 'OK');
-        setIsDeleteError(response.status !== 'OK');
-      } catch {
-        setIsDeleteError(true);
-      } finally {
-        setIsDeleting(false);
-      }
-
+      const response = await verwijderVoorkeur();
+      setIsDeleting(false);
+      setIsSaved(response.status === 'OK');
+      setIsDeleteError(response.status !== 'OK');
       return;
     }
 
-    const contactgegeven = geverifieerdeContactgegevens.find(
-      (item) => item.id === gekozenContactgegeven
-    );
+    const kanaal = kanalen.find(({ type }) => type === keuze);
 
-    if (
-      !contactgegeven?.value ||
-      (contactgegeven.type !== 'Email' &&
-        contactgegeven.type !== 'Telefoonnummer')
-    ) {
-      return;
+    if (kanaal) {
+      setVoorkeur({
+        payload: {
+          zaakIdentificatie,
+          kanaal: kanaal.type,
+          value: kanaal.value,
+        },
+      });
     }
+  }
 
-    fetch({
-      payload: {
-        zaakIdentificatie,
-        kanaal: contactgegeven.type,
-        value: contactgegeven.value,
-      },
-    });
-  };
+  const name = `zaakvoorkeur-${zaakIdentificatie}`;
+  const hasError = isSaveError || isDeleteError;
 
   return (
-    <section className="ams-mb-l">
-      <Heading level={3} className="ams-mb-s">
-        Communicatievoorkeur voor deze zaak
-      </Heading>
-
-      <Paragraph className="ams-mb-m">
-        Zaaknummer: {zaakIdentificatie}
-      </Paragraph>
-
-      {geverifieerdeContactgegevens.length === 0 && (
+    <form onSubmit={handleSubmit} className="ams-mb-l">
+      <FieldSet
+        legend={
+          omschrijving
+            ? `${omschrijving} (${zaakIdentificatie})`
+            : zaakIdentificatie
+        }
+      >
+        {voorkeur && (
+          <Paragraph size="small" className="ams-mb-s">
+            Huidige keuze: {formatZaakKanaal(voorkeur.contactgegeven)}
+            {!voorkeur.contactgegeven.isVerified && ' (nog niet gevalideerd)'}
+          </Paragraph>
+        )}
+        <Field>
+          <Radio
+            name={name}
+            value={STANDAARD}
+            checked={keuze === STANDAARD}
+            onChange={() => {
+              setKeuze(STANDAARD);
+              setIsSaved(false);
+            }}
+          >
+            Standaardinstelling gebruiken
+          </Radio>
+        </Field>
+        {kanalen.map((kanaal) => (
+          <Field key={kanaal.type}>
+            <Radio
+              name={name}
+              value={kanaal.type}
+              checked={keuze === kanaal.type}
+              onChange={() => {
+                setKeuze(kanaal.type);
+                setIsSaved(false);
+              }}
+            >
+              {formatZaakKanaal(kanaal)}
+            </Radio>
+          </Field>
+        ))}
+      </FieldSet>
+      {kanalen.length === 0 && (
+        <Paragraph size="small" className="ams-mb-s">
+          U heeft nog geen gevalideerd e-mailadres of mobiel telefoonnummer.
+          Stel dit eerst in onder Mijn contactgegevens.
+        </Paragraph>
+      )}
+      {isBusy ? (
+        <Paragraph>
+          <Spinner /> Bezig met opslaan...
+        </Paragraph>
+      ) : (
+        <Button type="submit" disabled={!isChanged}>
+          Opslaan
+        </Button>
+      )}
+      {isSaved && !hasError && (
         <Alert
-          severity="warning"
-          heading="Geen geverifieerde contactgegevens"
+          className="ams-mt-s"
+          heading="Voorkeur opgeslagen"
           headingLevel={4}
         >
-          <Paragraph>
-          U heeft nog geen geverifieerd e-mailadres of
-          mobiel telefoonnummer ingesteld.
-        </Paragraph>
-        <Paragraph>
-          <a href="/mijn-contact">
-          Ga naar Mijn contactgegevens om uw contactgegevens in te stellen.
-          </a>
-        </Paragraph>
+          <Paragraph>Uw voorkeur voor deze zaak is bijgewerkt.</Paragraph>
         </Alert>
       )}
-
-      <form onSubmit={handleSubmit}>
-        <fieldset className="ams-mb-m">
-          <legend>Waar wilt u notificaties ontvangen?</legend>
-
-          <div className="ams-mb-s">
-            <label>
-              <input
-                type="radio"
-                name={`kanaal-${zaakIdentificatie}`}
-                value="standaard"
-                checked={gekozenContactgegeven === 'standaard'}
-                onChange={() => {
-                  setGekozenContactgegeven('standaard');
-                  setIsSaved(false);
-                }}
-              />
-              Standaardinstelling gebruiken
-            </label>
-          </div>
-
-          {geverifieerdeContactgegevens.map((contactgegeven) => (
-            <div className="ams-mb-s" key={contactgegeven.id}>
-              <label>
-                <input
-                  type="radio"
-                  name={`kanaal-${zaakIdentificatie}`}
-                  value={contactgegeven.id ?? ''}
-                  checked={
-                    gekozenContactgegeven === contactgegeven.id
-                  }
-                  onChange={() => {
-                    setGekozenContactgegeven(
-                      contactgegeven.id ?? 'standaard'
-                    );
-                    setIsSaved(false);
-                  }}
-                />
-                {contactgegeven.type === 'Email'
-                  ? 'E-mail'
-                  : 'SMS'}
-                {' — '}
-                {contactgegeven.value}
-              </label>
-            </div>
-          ))}
-        </fieldset>
-
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={isLoading || isDeleting}
-        >
-          {isLoading || isDeleting ? 'Bezig...' : 'Opslaan'}
-        </Button>
-      </form>
-
-      {isSaved && (
-        <Alert heading="Voorkeur opgeslagen" headingLevel={4}>
-          <Paragraph>
-            Uw communicatievoorkeur is bijgewerkt.
-          </Paragraph>
-        </Alert>
-      )}
-
-      {(isError || isDeleteError) && (
+      {hasError && (
         <Alert
+          className="ams-mt-s"
           severity="error"
           heading="Opslaan mislukt"
           headingLevel={4}
         >
           <Paragraph>
-            Uw communicatievoorkeur kon niet worden opgeslagen.
-            Probeer het later opnieuw.
+            Uw voorkeur voor deze zaak kon niet worden opgeslagen. Probeer het
+            later opnieuw.
           </Paragraph>
         </Alert>
       )}
-    </section>
+    </form>
   );
 }

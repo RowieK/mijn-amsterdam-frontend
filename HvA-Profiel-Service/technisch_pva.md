@@ -257,6 +257,17 @@ Nieuwe route in `src/mocks-server/routes/` voor `/profielservice` (`/partij`, `/
 4. Op de detailpagina van een zaak (eerst één thema, zie WP8) de keuze tonen met de zaakidentificatie.
 5. `updateCommunicatievoorkeurState` uitbreiden. Let op: `mergeAppState` vervangt arrays mogelijk in plaats van ze samen te voegen.
 
+**Stand van WP7.**
+
+- De keuze zit op de pagina Mijn contact (`/mijn-contact`), volgens `HvA-Profiel-Service/wireframe_2.png`, en niet op de zaakdetailpagina. De tabel heeft de kolommen Thema, Bericht locaties en Notificaties ontvangen op. Een thema-rij toont 'standaard' en de gekozen kanalen van de zaken in dat thema; 'wijzig' opent per zaak de keuze (`ZaakKanaalVoorkeur`). De thema's met zaken komen uit `useZaakVoorkeurThemas`, nu alleen Erfpacht. Een volgend thema komt in die hook.
+- Client en BFF delen het formaat. `setZaakKanaalVoorkeur` geeft `ZaakKanaalVoorkeurFrontend` (`{ zaakIdentificatie, contactgegeven }`). De client vervangt daarmee de lijst `KLANT_CONTACT.communicatievoorkeuren.zaakKanaalVoorkeuren` (`mergeAppState` voegt arrays per index samen, dus de lijst wordt met `setAppState` vervangen). De zaakidentificatie in de tabel is het `zaakNummer` uit de Erfpacht-state, dezelfde waarde die de BFF als `referentie` opslaat.
+- De voorselectie vergelijkt kanaal en waarde, niet het id: het zaakadres is een eigen record (met `referentie`) en heeft dus een ander id dan het standaardadres.
+- Elke zaak heeft een eigen `useBffApi`-cacheKey. Anders delen alle zaken op de pagina `isLoading` en `isError`.
+- De toggle `KLANT_CONTACT.zaakvoorkeuren` geldt ook in de client: zonder toggle toont de tabel geen 'wijzig' bij een thema.
+- 'Bericht locaties' is alleen-lezen ('standaard'): WP1 tot en met WP6 hebben daar geen gegevens voor. De Berichtenbox heeft geen koppelactie, omdat de profielservice hem nog niet ondersteunt (de BFF zet hem op `disabled`).
+- `useCommunicatieVoorkeurBevestigen` (de stub met `console.info`) en de checkbox 'Post per e-mail' zijn vervangen door de tabel.
+- **Het zetten van een voorkeur werkt pas als WP8 een echte `zaakIsVanGebruiker` levert.** Die geeft nu een 503 (zie 'Stand van WP5'), dus de UI toont 'Opslaan mislukt'. Terugkeren naar 'standaard' (verwijderen) werkt wel, want dat controleert het eigenaarschap niet.
+
 ### WP8: Zaken uit OpenZaak (afhankelijkheid)
 
 De keuze werkt alleen voor zaken die in OpenZaak staan. Kies samen met het team één thema waarvan de zaken (ook) in OpenZaak staan en controleer dat de identificatie in Mijn Amsterdam gelijk is aan `zaak.identificatie` in OpenZaak. Staat er nog geen enkel thema in OpenZaak, dan is een nieuwe OpenZaak-service in `src/server/services/` nodig. Dat is een apart traject.

@@ -20,3 +20,25 @@
   border-radius: 4px;
   padding: var(--ams-spacing-m);
 }
+
+.Muted {
+  color: var(--ams-color-text-secondary);
+}
+
+.ColumnDescription {
+  color: var(--ams-color-text-secondary);
+  font-weight: normal;
+  margin-block-start: var(--ams-space-xs);
+}
+
+.Actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--ams-space-s);
+  margin-inline-start: var(--ams-space-s);
+}
+
+// De kolomtitels staan, zoals in het wireframe, op één lijn. De DS zet kopcellen zelf op `bottom`.
+:global(.ams-table__header) th.ColumnHeader {
+  vertical-align: top;
+}
