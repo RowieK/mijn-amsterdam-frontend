@@ -149,7 +149,7 @@ Uitgangspunten:
 - **Eerst via de profielservice (Amsterdam-adapter).** Dan blijven auth, caching en foutafhandeling (`requestData`, `getCustomApiConfig`) gelijk. Voorwaarde: de profielservice geeft `referentie` door en terug (open punt 1). Lukt dat niet, dan wordt de `openklant`-adapter de eerste.
 - **Een zaakvoorkeur is een contactgegeven met `referentie`.** De bestaande `createContactgegeven` en `deleteContactgegeven` worden hergebruikt.
 - **Zaakgebonden adressen tellen niet als standaardadres.** `getMostRecentByContactgegevenType` moet contactgegevens met een `referentie` overslaan, anders verschijnt een zaakadres als "Mijn contactgegevens".
-- **Per zaak maximaal één adres.** Bij wijzigen eerst het oude zaakadres verwijderen. De OMC pakt het eerste adres met een overeenkomende `referentie`, dus duplicaten maken het gedrag onvoorspelbaar.
+- **Per zaak maximaal één adres.** Bij wijzigen eerst het nieuwe zaakadres aanmaken en daarna het oude verwijderen (story #52). Zo is er nooit een moment zonder zaakadres, en blijft het oude adres staan als er iets misgaat. De OMC pakt het eerste adres met een overeenkomende `referentie`, dus duplicaten maken het gedrag onvoorspelbaar. `setZaakKanaalVoorkeur` ruimt daarom alle adressen met dezelfde `referentie` op.
 - **Alleen geverifieerde adressen.** De BFF controleert dit, niet alleen de UI.
 - **Feature toggle** `KLANT_CONTACT.zaakvoorkeuren` (nieuw, in `src/server/config/feature-toggles.ts`, aan buiten productie).
 
@@ -204,10 +204,14 @@ In `klantcontact-profieldienst.ts`:
 
 In `klantcontact-communicatievoorkeuren.ts`:
 
-- **`setZaakKanaalVoorkeur` (nieuw)**, in drie stappen:
-  1. Het huidige zaakadres opzoeken via `fetchProfiel` en `getZaakKanaalVoorkeuren`.
-  2. Als dat bestaat, het verwijderen met `deleteContactgegeven`.
-  3. Een nieuw adres aanmaken met `createContactgegeven`, met de zaakidentificatie als `referentie` en `isDefault: false`. Anders wordt het het standaardadres van de partij.
+- **`setZaakKanaalVoorkeur` (nieuw)**, eerst aanmaken en dan verwijderen (story #52):
+  1. `kanaal` moet in `config.zaakVoorkeur.kanalen` staan en `config.zaakVoorkeur.referentie(zaakIdentificatie)` moet een geldige `referentie` opleveren. Anders volgt een foutresultaat, zonder aanroepen naar de backend.
+  2. De contactgegevens ophalen met `backend.fetchContactgegevens`. Bij een mislukte profielresponse stopt de functie met een foutresultaat: niets wordt aangemaakt of verwijderd.
+  3. Alle contactgegevens met dezelfde `referentie` zoeken, ook duplicaten.
+  4. Een nieuw adres aanmaken met `createContactgegeven`, met de `referentie` en `isDefault: false`. Anders wordt het het standaardadres van de partij. Faalt dit, dan wordt niets verwijderd en blijft het oude adres staan.
+  5. Pas daarna de oude adressen verwijderen met `deleteContactgegeven`. Faalt dat, dan volgt een foutresultaat (zie het risico "Duplicaat na mislukte delete").
+  6. Het resultaat bevat het nieuwe contactgegeven met `isVerified`. Dat is `false`, want `createContactgegeven` stuurt een verificatiecode (open punt 3).
+  Contactgegevens komen niet in foutmeldingen of logregels.
 - **`deleteZaakKanaalVoorkeur` (nieuw)**: zoekt het zaakadres op en verwijdert het met `deleteContactgegeven`. De OMC valt daarna terug op het standaardadres.
 - **`fetchCommunicatievoorkeuren`**: vult de nieuwe lijst `zaakKanaalVoorkeuren` met `getZaakKanaalVoorkeuren`.
 
@@ -234,6 +238,12 @@ Validatie in `handleSetZaakKanaalVoorkeur`:
 - `zaakIdentificatie` levert via de referentiestrategie uit de config een `referentie` op die voldoet aan `ZAAK_REFERENTIE_PATTERN`.
 - De zaak hoort bij de ingelogde gebruiker (`zaakIsVanGebruiker` van de backend; de implementatie verschilt per gemeente). Anders kan iemand het kanaal voor andermans zaak omleiden.
 - Het adres is geverifieerd, of is gelijk aan een al geverifieerd standaardadres (afhankelijk van open punt 3).
+
+**Stand van WP5.**
+
+- Toggle `KLANT_CONTACT.zaakvoorkeuren` (aan buiten productie) zit op een eigen sub-router in `klantcontact-router.ts`. Staat hij uit, dan zijn `ZAAKVOORKEUR_SET` en `ZAAKVOORKEUR_DELETE` niet bereikbaar; de bestaande contactgegeven-routes blijven werken.
+- `zaakIsVanGebruiker` zit in `KlantcontactBackend`. De `profielservice`-adapter kan het eigenaarschap nog niet vaststellen (de profielservice kent geen zaken en er is geen OpenZaak-service, zie WP8) en geeft daarom een foutresultaat (503). `handleSetZaakKanaalVoorkeur` weigert dan: **het zetten van een zaakvoorkeur werkt pas als WP8 een echte controle levert.** Dit is bewust fail closed. De controle zelf is dan een OpenZaak-aanroep (zie "Uitkomst API-specificaties").
+- `handleDeleteZaakKanaalVoorkeur` controleert het eigenaarschap niet. Verwijderen raakt alleen adressen in het eigen profiel van de klant, dus er valt geen andermans zaak mee om te leiden. `deleteZaakKanaalVoorkeur` ruimt alle adressen met die `referentie` op en is een succes als er niets te verwijderen valt.
 
 ### WP6: Mock-server
 
@@ -263,7 +273,7 @@ Conform `agents.server.md`: tests naast de code, upstream-HTTP gestubd met `remo
 | Laag | Wat |
 |---|---|
 | Helpers | `getZaakKanaalVoorkeuren`; `getMostRecentByContactgegevenType` slaat adressen met `referentie` over; `ZAAK_REFERENTIE_PATTERN` (geldig, met `/`, langer dan 50) |
-| Service | `createContactgegeven` zonder opties is ongewijzigd (`isDefault: true`); met `referentie` gaat `isDefault: false` en `referentie` mee; `setZaakKanaalVoorkeur` verwijdert eerst het oude zaakadres |
+| Service | `createContactgegeven` zonder opties is ongewijzigd (`isDefault: true`); met `referentie` gaat `isDefault: false` en `referentie` mee; `setZaakKanaalVoorkeur` maakt eerst het nieuwe adres aan en verwijdert daarna het oude; bij een fout in de profielresponse, het aanmaken of het verwijderen blijft het oude adres staan of volgt een foutresultaat; alle duplicaten met dezelfde `referentie` worden verwijderd; het resultaat heeft `isVerified: false` |
 | Handlers | ongeldig kanaal, ongeldige zaakidentificatie, zaak niet van gebruiker, ongeverifieerd adres (`ResponseAuthenticatedMock`, `getReqMockWithOidc`) |
 | Toggle | uit-staat met `vi.resetModules()` en `vi.doMock(...)` |
 | Gemeente-config | Dezelfde service-tests draaien met twee configs: Amsterdam (`profielservice`) en een fictieve gemeente met een andere referentiestrategie. Controle dat de kern niets uit Amsterdam-specifieke modules importeert. |
@@ -289,6 +299,10 @@ Ketentest (handmatig, op een testomgeving): zaakadres zetten in Mijn Amsterdam, 
 | 10 | Eén deployment per gemeente, of meerdere gemeenten in één instantie? Dit plan gaat uit van het eerste. | Architectuur, beheer | Config bij opstarten (WP1) of per request bepalen welke gemeente aan de beurt is |
 | 11 | Hoe verifiëren andere gemeenten een adres? OpenKlant kent alleen `verificatieDatum`; een code versturen en controleren moet ergens anders. Kan dat via Notify NL, en waar staat de code zolang hij geldig is? | Product, architectuur | WP4, extra stap in de `openklant`-adapter |
 | 12 | Welke gemeenten volgen na Amsterdam, en welke OMC-versie en adresselectie gebruiken zij? | Product | Bepaalt welke configuratieopties nodig zijn (bijvoorbeeld `portaalvoorkeur`) |
+
+**Voorlopig gedrag bij open punt 3 (WP3, story #52).** Zolang de profielservice niet bevestigt hoe een tweede `DigitaalAdres` met hetzelfde adres zich gedraagt, behandelt `setZaakKanaalVoorkeur` een nieuw zaakadres altijd als ongeverifieerd: `createContactgegeven` stuurt een verificatiecode en het resultaat heeft `isVerified: false`. De functie zelf weigert ongeverifieerde adressen niet. De check "alleen geverifieerde adressen" hoort in `handleSetZaakKanaalVoorkeur` (WP5) en loopt vóór het aanroepen van deze functie. Wat die check doet met een adres dat gelijk is aan een al geverifieerd standaardadres, hangt af van het antwoord op open punt 3.
+
+**Gedrag na verwijderen van een zaakvoorkeur (WP3, story #55).** `deleteZaakKanaalVoorkeur` verwijdert alleen de adressen met de `referentie` van die zaak. Het standaardadres blijft staan. De OMC kiest daarna in deze volgorde: een adres met de `referentie` van de zaak (is er niet meer), dan `Partij.voorkeursDigitaalAdres`, dan het adres met `isStandaardAdres`. Er is geen terugval op 'het eerste adres'. Berichten voor de zaak gaan dus naar het voorkeursadres van de partij als de profielservice dat zet, anders naar het standaardadres. Of de profielservice `voorkeursDigitaalAdres` zet, is nog open (open punt 6). Tot dat antwoord er is, gaan we uit van het standaardadres. Als het profiel niet opgehaald kan worden, geeft `fetchCommunicatievoorkeuren` een fout en geen lege lijst, zodat de burger geen zaakvoorkeuren mist die er wel zijn.
 
 ### Uitkomst API-specificaties (testomgeving, 29 oktober 2026)
 
@@ -339,6 +353,7 @@ Nieuwe aandachtspunten uit de specs en docs:
 - **Omleiden van andermans notificaties:** zonder controle op eigenaarschap van de zaak kan iemand een referentie zetten op een vreemde zaak. Mitigatie: check in WP5.
 - **Privacy:** contactgegevens niet loggen; bestaande debug-opzet volgen.
 - **Ongeverifieerde nummers:** leidt tot niet-bezorgde notificaties. Mitigatie: server-side check.
+- **Duplicaat na mislukte delete:** `setZaakKanaalVoorkeur` maakt eerst het nieuwe adres aan. Faalt het verwijderen van het oude adres daarna, dan staan er twee adressen met dezelfde `referentie` en kiest de OMC onvoorspelbaar. De functie geeft een foutresultaat. Mitigatie: bij de eerstvolgende `setZaakKanaalVoorkeur` voor dezelfde zaak worden alle adressen met die `referentie` opgeruimd. Het terugdraaien (het nieuwe adres weer verwijderen) valt buiten WP3.
 - **Amsterdam-aannames in de kern:** een Amsterdam-URL, thema of begrip dat in de kern belandt, maakt hergebruik door een andere gemeente duur. Mitigatie: de tweede config in de tests (sectie 6) en de importgrens.
 - **Conventie die niet overal geldt:** een gemeente zonder OMC, of met een andere adresselectie, ziet geen effect van `referentie`. Mitigatie: referentiestrategie in de config, en open punt 12 per nieuwe gemeente beantwoorden.
 - **Te vroeg abstraheren:** de `openklant`-adapter bouwen voordat een tweede gemeente bekend is, kost werk dat misschien niet nodig blijkt. Mitigatie: alleen de interface en de `profielservice`-adapter in dit plan (WP1); de `openklant`-adapter pas na open punt 8.

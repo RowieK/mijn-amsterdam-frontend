@@ -1,7 +1,10 @@
 import type { GemeenteKlantcontactConfig } from './klantcontact-backend-types.ts';
 import { zaakIdentificatieAlsReferentie } from './klantcontact-helpers.ts';
 import type { ContactProfieldienstResponseSource } from './klantcontact-profieldienst-types.ts';
-import { createProfielserviceBackend } from './klantcontact-profieldienst.ts';
+import {
+  createProfielserviceBackend,
+  normalizeDutchMobileNumber,
+} from './klantcontact-profieldienst.ts';
 import { getAmsterdamKlantcontactConfig } from './klantcontact-service-config.ts';
 import { remoteApiHost } from '../../../testing/setup.ts';
 import { getAuthProfileAndToken, remoteApi } from '../../../testing/utils.ts';
@@ -128,9 +131,24 @@ describe.each([
         identificatieType: 'BSN',
         identificatieNummer: authProfileAndToken.profile.id,
         type: 'Telefoonnummer',
-        waarde: '0612345678',
+        waarde: '+31612345678', // een Nederlands mobiel nummer gaat als E.164 naar de profielservice
         isDefault: false,
         referentie: 'Z-24-2238078',
+      });
+    });
+
+    test('geeft een foutresultaat en doet geen aanroep bij een ongeldig mobiel nummer', async () => {
+      const response = await backend.createContactgegeven(
+        authProfileAndToken,
+        'Telefoonnummer',
+        '0201234567',
+        { referentie: 'Z-24-2238078', isDefault: false }
+      );
+
+      expect(response).toMatchObject({
+        status: 'ERROR',
+        content: null,
+        code: 400,
       });
     });
   });
@@ -167,6 +185,40 @@ describe.each([
 
       expect(response.content).toEqual({ verified: true });
     });
+
+    // TODO: het endpoint voor telefoonverificatie is nog niet bevestigd (plan, open punt 7).
+    test('verifieert een telefoonnummer met het genormaliseerde nummer in het veld telefoonnummer', async () => {
+      remoteApi
+        .post(`${basePath}/emailverificatie`, {
+          telefoonnummer: '+31612345678',
+          identificatieNummer: authProfileAndToken.profile.id,
+          identificatieType: 'BSN',
+          verificatieCode: '123456',
+        })
+        .reply(200);
+
+      const response = await backend.verifyContactgegeven(authProfileAndToken, {
+        type: 'Telefoonnummer',
+        value: '06 1234 5678',
+        code: '123456',
+      });
+
+      expect(response.content).toEqual({ verified: true });
+    });
+
+    test('geeft een foutresultaat en doet geen aanroep bij een ongeldig mobiel nummer', async () => {
+      const response = await backend.verifyContactgegeven(authProfileAndToken, {
+        type: 'Telefoonnummer',
+        value: '0201234567',
+        code: '123456',
+      });
+
+      expect(response).toMatchObject({
+        status: 'ERROR',
+        content: null,
+        code: 400,
+      });
+    });
   });
 
   describe('fetchDienstverlener', () => {
@@ -180,6 +232,23 @@ describe.each([
       expect(response.content?.diensten).toEqual([
         { id: 'zorgned', beschrijving: 'WMO en Jeugdzaken' },
       ]);
+    });
+  });
+
+  describe('zaakIsVanGebruiker', () => {
+    // De profielservice kent geen zaken en er is nog geen OpenZaak-controle (plan WP8).
+    // Zonder controle moet de adapter weigeren, en geen HTTP-aanroep doen.
+    test('weigert zolang het eigenaarschap niet vast te stellen is (fail closed)', async () => {
+      const response = await backend.zaakIsVanGebruiker(
+        authProfileAndToken,
+        'Z-24-2238078'
+      );
+
+      expect(response).toMatchObject({
+        status: 'ERROR',
+        content: null,
+        code: 503,
+      });
     });
   });
 });
@@ -200,4 +269,25 @@ describe('getAmsterdamKlantcontactConfig', () => {
   test('biedt e-mail en telefoonnummer aan als kanaal per zaak', () => {
     expect(config.zaakVoorkeur.kanalen).toEqual(['Email', 'Telefoonnummer']);
   });
+});
+
+describe('normalizeDutchMobileNumber', () => {
+  test.each([
+    ['0612345678', '+31612345678'],
+    ['+31612345678', '+31612345678'],
+    ['0031612345678', '+31612345678'],
+    ['06 1234 5678', '+31612345678'],
+    ['06-1234-5678', '+31612345678'],
+  ])('accepteert %s', (input, expected) => {
+    expect(normalizeDutchMobileNumber(input)).toBe(expected);
+  });
+
+  test.each(['061234567', '0201234567', 'abcdefghij', '', '+316123456789'])(
+    'weigert %s',
+    (input) => {
+      expect(() => normalizeDutchMobileNumber(input)).toThrow(
+        'Ongeldig Nederlands mobiel telefoonnummer'
+      );
+    }
+  );
 });

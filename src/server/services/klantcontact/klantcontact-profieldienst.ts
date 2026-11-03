@@ -20,10 +20,42 @@ import type {
   VerifyVerificationRequestResponse,
 } from './klantcontact-profieldienst-types.ts';
 import type { DienstverlenerSource } from './klantcontact-profieldienst-types.ts';
-import { apiSuccessResult, type ApiResponse, } from '../../../universal/helpers/api.ts';
+import { apiErrorResult, apiSuccessResult, type ApiResponse, } from '../../../universal/helpers/api.ts';
 import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
 import { getCustomApiConfig } from '../../helpers/source-api-helpers.ts';
 import { requestData } from '../../helpers/source-api-request.ts';
+
+export function normalizeDutchMobileNumber(value: string): string {
+  const normalized = value.replace(/[\s()-]/g, '');
+
+  let phoneNumber = normalized;
+
+  if (/^06\d{8}$/.test(phoneNumber)) {
+    phoneNumber = `+31${phoneNumber.slice(1)}`;
+  } else if (/^00316\d{8}$/.test(phoneNumber)) {
+    phoneNumber = `+${phoneNumber.slice(2)}`;
+  }
+
+  if (!/^\+316\d{8}$/.test(phoneNumber)) {
+    throw new Error('Ongeldig Nederlands mobiel telefoonnummer');
+  }
+
+  return phoneNumber;
+}
+
+// De adapter geeft een foutresultaat in plaats van een exception, zodat een ongeldig nummer
+// (bijvoorbeeld een bestaand vast nummer dat via een zaakvoorkeur wordt gekozen) geen 500 oplevert.
+function normalizeTelefoonnummer(value: string): ApiResponse<string> {
+  try {
+    return apiSuccessResult(normalizeDutchMobileNumber(value));
+  } catch {
+    return apiErrorResult(
+      'Ongeldig Nederlands mobiel telefoonnummer',
+      null,
+      HttpStatusCode.BadRequest
+    );
+  }
+}
 
 const DEFAULT_DIENSTVERLENER = 'amsterdam';
 
@@ -108,6 +140,15 @@ async function createContactgegeven(
   contactgegevenWaarde: string,
   { referentie, isDefault = true }: CreateContactgegevenOptions = {}
 ): Promise<ApiResponse<ContactgegevenFrontend>> {
+  const waarde =
+    contactgegevenType === 'Telefoonnummer'
+      ? normalizeTelefoonnummer(contactgegevenWaarde)
+      : apiSuccessResult(contactgegevenWaarde);
+
+  if (waarde.status !== 'OK') {
+    return waarde;
+  }
+
   const identificatieType = getIdentificatieType(
     authProfileAndToken.profile.profileType
   );
@@ -115,7 +156,7 @@ async function createContactgegeven(
     identificatieType,
     identificatieNummer: authProfileAndToken.profile.id,
     type: contactgegevenType,
-    waarde: contactgegevenWaarde,
+    waarde: waarde.content,
     isDefault,
     ...(referentie && { referentie }),
   };
@@ -167,18 +208,31 @@ async function verifyContactgegeven(
   profielserviceConfig: ProfielserviceConfig,
   authProfileAndToken: AuthProfileAndToken,
   { value, code, type }: VerifyVerificationRequestProps
-) {
-  // TODO: based on type, we might want to send the verification request to a different endpoint or with a different payload structure.
-  // For now we only support email verification, but the API supports phone verification as well, and in the future we might want to add more types.
+): Promise<ApiResponse<VerifyVerificationRequestResponse>> {
+  // TODO: het endpoint voor telefoonverificatie is nog niet bevestigd (plan, open punt 7).
+  // Het payload ondersteunt al e-mail en telefoon; het endpoint is nu voor beide `/emailverificatie`.
   const identificatieType = getIdentificatieType(
     authProfileAndToken.profile.profileType
   );
-  const data: VerifyVerificationRequestPayload = {
-    email: value,
+  const verificationData = {
     identificatieNummer: authProfileAndToken.profile.id,
     identificatieType,
     verificatieCode: code,
   };
+
+  let data: VerifyVerificationRequestPayload;
+
+  if (type === 'Telefoonnummer') {
+    const telefoonnummer = normalizeTelefoonnummer(value);
+
+    if (telefoonnummer.status !== 'OK') {
+      return telefoonnummer;
+    }
+
+    data = { ...verificationData, telefoonnummer: telefoonnummer.content };
+  } else {
+    data = { ...verificationData, email: value };
+  }
 
   const apiConfig = getCustomApiConfig(profielserviceConfig, {
     method: 'POST',
@@ -193,6 +247,19 @@ async function verifyContactgegeven(
   });
 
   return requestData<VerifyVerificationRequestResponse>(apiConfig);
+}
+
+// De profielservice kent geen zaken en kan dus niet vaststellen van wie een zaak is. De echte controle is een
+// OpenZaak-aanroep (plan WP8) en die service bestaat nog niet. Tot dan weigeren we altijd (fail closed):
+// liever geen zaakvoorkeur dan een voorkeur voor een zaak waarvan het eigenaarschap niet vaststaat.
+function zaakIsVanGebruiker(): Promise<ApiResponse<boolean>> {
+  return Promise.resolve(
+    apiErrorResult(
+      'Controle of de zaak van de gebruiker is, is nog niet beschikbaar',
+      null,
+      HttpStatusCode.ServiceUnavailable
+    )
+  );
 }
 
 export function createProfielserviceBackend({
@@ -228,5 +295,6 @@ export function createProfielserviceBackend({
       ),
     verifyContactgegeven: (authProfileAndToken, props) =>
       verifyContactgegeven(profielservice, authProfileAndToken, props),
+    zaakIsVanGebruiker,
   };
 }

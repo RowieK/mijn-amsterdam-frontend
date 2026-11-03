@@ -207,10 +207,17 @@ export function ContactgegevenForm({
     (event) => {
       event.preventDefault();
 
-      if (
+      const normalizedPhoneNumber = valueToVerify.replace(/[\s()-]/g, '');
+
+      const isInvalidEmail =
         type === ContactgegevenTypeEnum.Email &&
-        !valueToVerify.includes('@')
-      ) {
+        !valueToVerify.includes('@');
+
+      const isInvalidPhone =
+        type === ContactgegevenTypeEnum.Telefoonnummer &&
+        !/^(06\d{8}|00316\d{8}|\+316\d{8})$/.test(normalizedPhoneNumber);
+
+      if (isInvalidEmail || isInvalidPhone) {
         setIsInvalid(true);
         return;
       }

@@ -54,6 +54,10 @@ export type KlantcontactBackend = {
     authProfileAndToken: AuthProfileAndToken,
     props: VerifyVerificationRequestProps
   ) => Promise<ApiResponse<VerifyVerificationRequestResponse>>;
+  zaakIsVanGebruiker: (
+    authProfileAndToken: AuthProfileAndToken,
+    zaakIdentificatie: string
+  ) => Promise<ApiResponse<boolean>>;
 };
 
 // De profielservice kent ook diensten waarvoor een gebruiker zich heeft aangesloten.

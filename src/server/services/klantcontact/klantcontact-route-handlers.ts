@@ -1,16 +1,27 @@
+import { HttpStatusCode } from 'axios';
 import createDebugger from 'debug';
 import type { Request } from 'express';
 
-import { klantcontactBackend } from './klantcontact-backend.ts';
+import {
+  klantcontactBackend,
+  klantcontactConfig,
+} from './klantcontact-backend.ts';
 import {
   ContactgegevenTypes,
   ContactgegevenTypeValues,
+  deleteZaakKanaalVoorkeur,
   fetchCommunicatievoorkeuren,
+  setZaakKanaalVoorkeur,
 } from './klantcontact-communicatievoorkeuren.ts';
+import { getValidZaakReferentie } from './klantcontact-helpers.ts';
+import { normalizeDutchMobileNumber } from './klantcontact-profieldienst.ts';
+import { apiErrorResult } from '../../../universal/helpers/api.ts';
 import {
   sendBadRequest,
   sendBadRequestInvalidInput,
+  sendInternalServerError,
   sendResponse,
+  sendServiceUnavailable,
   type ResponseAuthenticated,
 } from '../../routing/route-helpers.ts';
 
@@ -26,15 +37,38 @@ export async function handleVerifyContactgegeven(
 
   const { value, code, type } = req.body;
 
-  if (!value || !code || type !== ContactgegevenTypes.Email) {
-    return sendBadRequest(res, 'value, type and code are required');
+  const isSupportedType =
+    type === ContactgegevenTypes.Email ||
+    type === ContactgegevenTypes.Telefoonnummer;
+
+  if (
+    typeof value !== 'string' ||
+    !value.trim() ||
+    typeof code !== 'string' ||
+    !code.trim() ||
+    !isSupportedType
+  ) {
+    return sendBadRequest(res, 'A valid value, type and code are required');
+  }
+
+  let normalizedValue = value;
+
+  if (type === ContactgegevenTypes.Telefoonnummer) {
+    try {
+      normalizedValue = normalizeDutchMobileNumber(value);
+    } catch {
+      return sendBadRequest(
+        res,
+        'Voer een geldig Nederlands mobiel telefoonnummer in'
+      );
+    }
   }
 
   const response = await klantcontactBackend.verifyContactgegeven(
     res.locals.authProfileAndToken,
     {
       type,
-      value,
+      value: normalizedValue,
       code,
     }
   );
@@ -60,11 +94,26 @@ export async function handleCreateContactgegeven(
 ) {
   const { value, type } = req.body;
 
-  if (!ContactgegevenTypeValues.includes(type) || !value) {
+  if (
+    !ContactgegevenTypeValues.includes(type) ||
+    typeof value !== 'string' ||
+    !value.trim()
+  ) {
     return sendBadRequestInvalidInput(
       res,
-      `payloadType ${type} is not supported`
+      `payloadType ${type} is not supported or value is invalid`
     );
+  }
+
+  if (type === ContactgegevenTypes.Telefoonnummer) {
+    try {
+      normalizeDutchMobileNumber(value);
+    } catch {
+      return sendBadRequest(
+        res,
+        'Voer een geldig Nederlands mobiel telefoonnummer in'
+      );
+    }
   }
 
   const response = await klantcontactBackend.createContactgegeven(
@@ -103,5 +152,106 @@ export async function handleFetchDienstverlener(
     res.locals.authProfileAndToken,
     naam
   );
+  return sendResponse(res, response);
+}
+
+// Zet de voorkeur voor één zaak. Alleen een geverifieerd adres van de klant zelf mag gekozen worden,
+// en alleen voor een zaak van de klant zelf (anders kan iemand het kanaal van andermans zaak omleiden).
+// Kan het eigenaarschap niet worden vastgesteld, dan weigeren we ook.
+// Contactgegevens (value) komen niet in foutmeldingen of logs.
+export async function handleSetZaakKanaalVoorkeur(
+  req: Request,
+  res: ResponseAuthenticated
+) {
+  const { zaakIdentificatie, kanaal, value } = req.body ?? {};
+
+  if (!klantcontactConfig.zaakVoorkeur.kanalen.includes(kanaal)) {
+    return sendBadRequest(res, 'kanaal is not supported for a zaakvoorkeur');
+  }
+
+  if (!value || typeof value !== 'string') {
+    return sendBadRequest(res, 'value is required');
+  }
+
+  if (!getValidZaakReferentie(klantcontactConfig, zaakIdentificatie)) {
+    return sendBadRequest(res, 'zaakIdentificatie is not valid');
+  }
+
+  const zaakIsVanGebruiker = await klantcontactBackend.zaakIsVanGebruiker(
+    res.locals.authProfileAndToken,
+    zaakIdentificatie
+  );
+
+  if (zaakIsVanGebruiker.status !== 'OK') {
+    return sendServiceUnavailable(res, 'Controleren van de zaak mislukt');
+  }
+
+  if (!zaakIsVanGebruiker.content) {
+    return sendResponse(
+      res,
+      apiErrorResult(
+        'Forbidden: de zaak hoort niet bij de ingelogde gebruiker',
+        null,
+        HttpStatusCode.Forbidden
+      )
+    );
+  }
+
+  const contactgegevens = await klantcontactBackend.fetchContactgegevens(
+    res.locals.authProfileAndToken
+  );
+
+  if (contactgegevens.status !== 'OK') {
+    return sendInternalServerError(
+      res,
+      'Ophalen van de contactgegevens mislukt'
+    );
+  }
+
+  // Een zaakadres (met referentie) telt niet: de klant kiest uit zijn eigen, al geverifieerde adressen.
+  const isGeverifieerdAdresVanKlant = contactgegevens.content.some(
+    (contactgegeven) =>
+      !contactgegeven.referentie &&
+      contactgegeven.type === kanaal &&
+      contactgegeven.waarde === value &&
+      contactgegeven.isGeverifieerd
+  );
+
+  if (!isGeverifieerdAdresVanKlant) {
+    return sendBadRequest(
+      res,
+      'Only a verified contactgegeven of the user can be chosen'
+    );
+  }
+
+  const response = await setZaakKanaalVoorkeur(
+    res.locals.authProfileAndToken,
+    klantcontactBackend,
+    klantcontactConfig,
+    { zaakIdentificatie, kanaal, value }
+  );
+
+  return sendResponse(res, response);
+}
+
+// Verwijdert de voorkeur voor één zaak. Dit raakt alleen adressen in het eigen profiel van de klant,
+// dus anders dan bij het zetten is een controle op eigenaarschap van de zaak niet nodig.
+export async function handleDeleteZaakKanaalVoorkeur(
+  req: Request,
+  res: ResponseAuthenticated
+) {
+  const { zaakIdentificatie } = req.body ?? {};
+
+  if (!getValidZaakReferentie(klantcontactConfig, zaakIdentificatie)) {
+    return sendBadRequest(res, 'zaakIdentificatie is not valid');
+  }
+
+  const response = await deleteZaakKanaalVoorkeur(
+    res.locals.authProfileAndToken,
+    klantcontactBackend,
+    klantcontactConfig,
+    zaakIdentificatie
+  );
+
   return sendResponse(res, response);
 }
