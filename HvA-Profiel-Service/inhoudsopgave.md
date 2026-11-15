@@ -14,7 +14,8 @@
 | Architecture diagram | [architecture-diagram.png](diagrammen/architecture-diagram.png) |
 | Component diagram | [component-diagram.png](diagrammen/component-diagram.png) |
 | Class diagram (eigen oplossing) | [class-diagram.png](diagrammen/class-diagram.png) |
-| Sequence diagram (extra) | [sequence-diagram.png](diagrammen/sequence-diagram.png) |
+| Sequence diagram | [sequence-diagram.png](diagrammen/sequence-diagram.png) |
+| Toelichting bij alle diagrammen | [toelichting.md](diagrammen/toelichting.md) |
 
 ## Code
 
