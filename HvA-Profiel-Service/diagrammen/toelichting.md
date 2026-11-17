@@ -6,15 +6,42 @@ Alle diagrammen horen bij de feature "communicatievoorkeuren per zaak" van de La
 
 ![Sequence diagram](sequence-diagram.png)
 
+De bron van het diagram staat in [sequence-diagram.mmd](sequence-diagram.mmd) (Mermaid).
+
+**Deelnemers:** de burger (persoon), Mijn Amsterdam (de React-client, dus de pagina Mijn contact in de browser van de burger), de BFF en de profielservice. In een eerdere versie stonden "Browser" en "Scherm" als aparte deelnemers. Dat was dezelfde client, dus nu staat er een persoon tegenover systemen.
+
 **Wat het laat zien:** de volgorde van berichten wanneer een burger voor een zaak een kanaal kiest.
 
-1. De burger kiest in de browser een kanaal voor een zaak. Het scherm stuurt een POST naar `zaakvoorkeur/set` van de BFF.
-2. De BFF controleert eerst of de zaak van de ingelogde burger is. Is dat niet zo, dan volgt een 403. Lukt de controle zelf niet, dan volgt een 503.
-3. De BFF maakt in de profielservice een nieuw zaakadres aan. Dat adres is nog niet geverifieerd en krijgt een verificatiecode.
-4. Pas daarna verwijdert de BFF het oude zaakadres.
-5. De BFF meldt dat de keuze is opgeslagen. Het scherm toont de keuze aan de burger.
+1. De burger kiest in de client een kanaal en een adres voor een zaak.
+2. De client stuurt een POST naar `zaakvoorkeur/set` van de BFF.
+3. De BFF controleert de invoer (kanaal, waarde en zaakidentificatie). Is die ongeldig, dan volgt een 400.
+4. De BFF controleert of de zaak van de ingelogde burger is. Is dat niet zo, dan volgt een 403. Lukt de controle zelf niet, dan volgt een 503.
+5. en 6. De BFF haalt de contactgegevens van de burger op bij de profielservice.
+7. De BFF controleert dat het gekozen adres een geverifieerd adres van de burger zelf is. Zo niet, dan volgt een 400.
+8. en 9. De BFF maakt in de profielservice een nieuw zaakadres aan, met de referentie van de zaak. Dat adres is nog niet geverifieerd.
+10. en 11. Pas daarna verwijdert de BFF de oude zaakadressen met dezelfde referentie.
+12. en 13. De BFF meldt dat de keuze is opgeslagen en de client toont de keuze aan de burger.
 
-**Waarom in deze volgorde:** eerst aanmaken en dan verwijderen zorgt dat een mislukte aanmaak de burger niet zonder voorkeur achterlaat. De eigenaarscheck staat vooraan, zodat een burger geen voorkeur van een andermans zaak kan wijzigen (autorisatie, niet alleen authenticatie).
+**Waarom in deze volgorde:** eerst aanmaken en dan verwijderen zorgt dat een mislukte aanmaak de burger niet zonder voorkeur achterlaat. De eigenaarscheck staat vóór het ophalen en aanmaken van adressen, zodat een burger geen voorkeur van een andermans zaak kan wijzigen (autorisatie, niet alleen authenticatie).
+
+**Klopt het met de code?** Gecontroleerd op 17 november 2026 tegen `src/server/services/klantcontact/`.
+
+| Stap | Waar in de code |
+|---|---|
+| 2 | Route `ZAAKVOORKEUR_SET` in `klantcontact-service-config.ts`, geregistreerd in `klantcontact-router.ts` achter de toggle `KLANT_CONTACT.zaakvoorkeuren` en achter het inloggen |
+| 3 | `handleSetZaakKanaalVoorkeur` in `klantcontact-route-handlers.ts`: kanaal, waarde en `getValidZaakReferentie` geven bij een fout 400 |
+| 4 | `klantcontactBackend.zaakIsVanGebruiker`: status niet OK geeft 503, uitkomst `false` geeft 403 |
+| 5 tot en met 7 | `fetchContactgegevens` en daarna de controle op een geverifieerd adres zonder referentie (400). Mislukt het ophalen, dan volgt een 500 |
+| 8 tot en met 11 | `setZaakKanaalVoorkeur` in `klantcontact-communicatievoorkeuren.ts`: `createContactgegeven` met referentie en `isDefault: false`, daarna `deleteContactgegeven` voor alle adressen met dezelfde referentie |
+| 12 en 13 | De client verwerkt het antwoord in `useSetZaakKanaalVoorkeur` (WP7) en toont de keuze |
+
+**Bewust vereenvoudigd in het diagram:**
+
+- Stap 5 gebeurt in de code twee keer: één keer in de handler (voor de adrescontrole) en één keer in `setZaakKanaalVoorkeur` (om de oude adressen te vinden). Het diagram toont het één keer.
+- Mislukt het verwijderen in stap 10, dan geeft de service een foutmelding terwijl het nieuwe adres al bestaat. Bij de volgende keer worden de duplicaten opgeruimd.
+- Bij stap 9 stuurt `createContactgegeven` volgens de code een verificatieverzoek. Het adres blijft ongeverifieerd tot de code is ingevoerd.
+
+**Verschil tussen ontwerp en huidige stand:** stap 4 is nog een stub. De OpenZaak-aanroep (WP8) bestaat nog niet, dus `zaakIsVanGebruiker` geeft nu altijd een 503 (fail closed: liever geen voorkeur dan een voorkeur voor een zaak waarvan het eigenaarschap niet vaststaat). Het diagram toont de bedoelde werking. Zolang WP8 niet af is, stopt het proces in de praktijk bij stap 4.
 
 ## Architecture diagram: de keten
 
