@@ -1,0 +1,30 @@
+sequenceDiagram
+    actor Burger
+    participant Client as Mijn Amsterdam<br/>(React-client)
+    participant BFF as BFF<br/>(Node en Express)
+    participant Profiel as Profielservice<br/>(Worth)
+
+    Burger->>Client: 1. Kiest een kanaal en adres voor een zaak
+    Client->>BFF: 2. POST zaakvoorkeur/set<br/>(zaakIdentificatie, kanaal, value)
+    BFF->>BFF: 3. Invoer controleren
+    opt invoer ongeldig
+        BFF-->>Client: 400 Bad Request
+    end
+    BFF->>BFF: 4. Is de zaak van de ingelogde burger?
+    alt controle mislukt (nu altijd: WP8 nog niet af)
+        BFF-->>Client: 503 Service Unavailable
+    else zaak is niet van de burger
+        BFF-->>Client: 403 Forbidden
+    end
+    BFF->>Profiel: 5. Contactgegevens van de burger ophalen
+    Profiel-->>BFF: 6. Lijst met contactgegevens
+    BFF->>BFF: 7. Is het gekozen adres een geverifieerd adres van de burger?
+    opt nee
+        BFF-->>Client: 400 Bad Request
+    end
+    BFF->>Profiel: 8. Nieuw zaakadres aanmaken (met referentie van de zaak)
+    Profiel-->>BFF: 9. Aangemaakt, nog niet geverifieerd
+    BFF->>Profiel: 10. Oude zaakadres(sen) met dezelfde referentie verwijderen
+    Profiel-->>BFF: 11. Verwijderd
+    BFF-->>Client: 12. Keuze opgeslagen
+    Client-->>Burger: 13. Keuze getoond
