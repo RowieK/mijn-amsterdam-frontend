@@ -10,6 +10,18 @@ De bron van het diagram staat in [sequence-diagram.mmd](sequence-diagram.mmd) (M
 
 **Deelnemers:** de burger (persoon), Mijn Amsterdam (de React-client, dus de pagina Mijn contact in de browser van de burger), de BFF en de profielservice. In een eerdere versie stonden "Browser" en "Scherm" als aparte deelnemers. Dat was dezelfde client, dus nu staat er een persoon tegenover systemen.
 
+**Onderdelen en wanneer ze actief zijn:** de blauwe balken op de lijnen in het diagram laten zien wanneer een onderdeel bezig is met dit verzoek, ook als het wacht op een antwoord van het volgende onderdeel. Een balk begint bij het bericht dat het onderdeel aanroept en eindigt bij het antwoord dat het teruggeeft. Boven elk onderdeel staat in het diagram ook tussen welke stappen het actief is, en de legenda bovenin legt de balken uit.
+
+| Onderdeel | Wat is het | Wat doet het in dit diagram | Actief tijdens stap |
+|---|---|---|---|
+| Burger | Inwoner die is ingelogd met DigiD of eHerkenning | Kiest het kanaal en het adres (1) en ziet het resultaat (13). Is een persoon en geen systeem, dus heeft geen balk. | Geen balk |
+| Mijn Amsterdam (React-client) | De pagina Mijn contact in de browser van de burger | Neemt de keuze van de burger aan, stuurt die naar de BFF (2) en toont het antwoord (13). Wacht ertussen op de BFF. | 1 tot en met 13 |
+| BFF (Node en Express) | De server van Mijn Amsterdam tussen de client en de achterliggende diensten. Laat de burger inloggen. | Controleert de invoer (3), de eigenaar van de zaak (4) en het adres (7), roept de profielservice aan (5, 8 en 10) en stuurt het antwoord terug (12). | 2 tot en met 12 |
+| Profielservice (Worth) | Dienst die de digitale adressen van de burger opslaat in OpenKlant. In ontwikkeling vervangt een mock-server hem. | Levert de contactgegevens (5 en 6), maakt het nieuwe zaakadres aan (8 en 9) en verwijdert de oude adressen (10 en 11). | 5 en 6, 8 en 9, 10 en 11 (drie korte balken) |
+
+- Stap 3, 4 en 7 doet de BFF zelf. De profielservice is dan niet actief.
+- Bij een fout (400, 403 of 503) stopt de verwerking bij de foutpijl en krijgt de client direct dat antwoord. De balken lopen in het diagram door, omdat alleen het gewone verloop (alles gaat goed) is getekend.
+
 **Wat het laat zien:** de volgorde van berichten wanneer een burger voor een zaak een kanaal kiest.
 
 1. De burger kiest in de client een kanaal en een adres voor een zaak.

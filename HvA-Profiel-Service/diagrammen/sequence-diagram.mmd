@@ -1,30 +1,33 @@
 sequenceDiagram
     actor Burger
-    participant Client as Mijn Amsterdam<br/>(React-client)
-    participant BFF as BFF<br/>(Node en Express)
-    participant Profiel as Profielservice<br/>(Worth)
+    participant Client as Mijn Amsterdam<br/>(React-client)<br/>actief: stap 1 t/m 13
+    participant BFF as BFF<br/>(Node en Express)<br/>actief: stap 2 t/m 12
+    participant Profiel as Profielservice<br/>(Worth)<br/>actief: stap 5-6, 8-9, 10-11
 
-    Burger->>Client: 1. Kiest een kanaal en adres voor een zaak
-    Client->>BFF: 2. POST zaakvoorkeur/set<br/>(zaakIdentificatie, kanaal, value)
+    Note over Client,Profiel: LEGENDA: een blauwe balk = het onderdeel is actief<br/>(het werkt aan het verzoek of wacht op het antwoord van het volgende onderdeel).<br/>De burger is een persoon en heeft geen balk.
+
+    Burger->>+Client: 1. Kiest een kanaal en adres voor een zaak
+    Client->>+BFF: 2. POST zaakvoorkeur/set<br/>(zaakIdentificatie, kanaal, value)
     BFF->>BFF: 3. Invoer controleren
     opt invoer ongeldig
-        BFF-->>Client: 400 Bad Request
+        BFF-->>Client: 400 Bad Request (verwerking stopt)
     end
     BFF->>BFF: 4. Is de zaak van de ingelogde burger?
     alt controle mislukt (nu altijd: WP8 nog niet af)
-        BFF-->>Client: 503 Service Unavailable
+        BFF-->>Client: 503 Service Unavailable (verwerking stopt)
     else zaak is niet van de burger
-        BFF-->>Client: 403 Forbidden
+        BFF-->>Client: 403 Forbidden (verwerking stopt)
     end
-    BFF->>Profiel: 5. Contactgegevens van de burger ophalen
-    Profiel-->>BFF: 6. Lijst met contactgegevens
+    BFF->>+Profiel: 5. Contactgegevens van de burger ophalen
+    Profiel-->>-BFF: 6. Lijst met contactgegevens
     BFF->>BFF: 7. Is het gekozen adres een geverifieerd adres van de burger?
+    Note over Profiel: niet actief (de BFF werkt zelf)
     opt nee
-        BFF-->>Client: 400 Bad Request
+        BFF-->>Client: 400 Bad Request (verwerking stopt)
     end
-    BFF->>Profiel: 8. Nieuw zaakadres aanmaken (met referentie van de zaak)
-    Profiel-->>BFF: 9. Aangemaakt, nog niet geverifieerd
-    BFF->>Profiel: 10. Oude zaakadres(sen) met dezelfde referentie verwijderen
-    Profiel-->>BFF: 11. Verwijderd
-    BFF-->>Client: 12. Keuze opgeslagen
-    Client-->>Burger: 13. Keuze getoond
+    BFF->>+Profiel: 8. Nieuw zaakadres aanmaken (met referentie van de zaak)
+    Profiel-->>-BFF: 9. Aangemaakt, nog niet geverifieerd
+    BFF->>+Profiel: 10. Oude zaakadres(sen) met dezelfde referentie verwijderen
+    Profiel-->>-BFF: 11. Verwijderd
+    BFF-->>-Client: 12. Keuze opgeslagen
+    Client-->>-Burger: 13. Keuze getoond
