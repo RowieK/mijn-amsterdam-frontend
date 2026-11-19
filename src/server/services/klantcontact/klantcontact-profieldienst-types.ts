@@ -47,8 +47,8 @@ export type ContactgegevenSource = {
   isGeverifieerd: boolean;
   isDefault: boolean;
   referentie?: string | null; // OpenKlant DigitaalAdres.referentie, bij een zaakvoorkeur de zaakidentificatie
-  createdAt: string; // ISO date string
-  lastUpdated: string; // ISO date string
+  createdAt: string | null; // ISO date string. Null bij Open Klant: een DigitaalAdres heeft geen aanmaakdatum.
+  lastUpdated: string | null; // ISO date string. Null bij Open Klant, zie createdAt.
   scopes: ScopeSource[];
 };
 

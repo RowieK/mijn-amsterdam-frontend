@@ -235,14 +235,64 @@ describe.each([
     });
   });
 
+  // De profielservice kent geen zaken: het eigenaarschap van een zaak controleert de adapter in Open Zaak.
   describe('zaakIsVanGebruiker', () => {
-    // De profielservice kent geen zaken en er is nog geen OpenZaak-controle (plan WP8).
-    // Zonder controle moet de adapter weigeren, en geen HTTP-aanroep doen.
-    test('weigert zolang het eigenaarschap niet vast te stellen is (fail closed)', async () => {
-      const response = await backend.zaakIsVanGebruiker(
-        authProfileAndToken,
-        'Z-24-2238078'
-      );
+    const openZaak = {
+      url: `${remoteApiHost}/fictieve-gemeente/zaken/api/v1/`,
+      clientId: 'test-client',
+      jwtSecret: 'test-secret',
+      bronorganisatie: '123456782',
+    };
+    const zaakUrl = `${remoteApiHost}/fictieve-gemeente/zaken/api/v1/zaken/abc`;
+    const bsnAuth = {
+      ...authProfileAndToken,
+      profile: { ...authProfileAndToken.profile, id: '999990019' },
+    };
+
+    test('is waar voor de initiator van de zaak in Open Zaak', async () => {
+      remoteApi
+        .get('/fictieve-gemeente/zaken/api/v1/zaken')
+        .query({ identificatie: 'Z-24-2238078', bronorganisatie: '123456782' })
+        .reply(200, {
+          results: [
+            {
+              url: zaakUrl,
+              uuid: 'abc',
+              identificatie: 'Z-24-2238078',
+              bronorganisatie: '123456782',
+            },
+          ],
+        });
+      remoteApi
+        .get('/fictieve-gemeente/zaken/api/v1/rollen')
+        .query({ zaak: zaakUrl, omschrijvingGeneriek: 'initiator' })
+        .reply(200, {
+          results: [
+            {
+              url: `${zaakUrl}/rol`,
+              zaak: zaakUrl,
+              betrokkeneType: 'natuurlijk_persoon',
+              omschrijvingGeneriek: 'initiator',
+              betrokkeneIdentificatie: { inpBsn: '999990019' },
+            },
+          ],
+        });
+
+      const response = await createProfielserviceBackend({
+        ...config,
+        openZaak,
+      }).zaakIsVanGebruiker(bsnAuth, 'Z-24-2238078');
+
+      expect(response).toEqual({ status: 'OK', content: true });
+    });
+
+    // Zonder Open Zaak kan het eigenaarschap niet worden vastgesteld. De adapter moet dan weigeren
+    // (fail closed) en geen HTTP-aanroep doen.
+    test('weigert zonder Open Zaak-configuratie (fail closed)', async () => {
+      const response = await createProfielserviceBackend({
+        ...config,
+        openZaak: undefined,
+      }).zaakIsVanGebruiker(authProfileAndToken, 'Z-24-2238078');
 
       expect(response).toMatchObject({
         status: 'ERROR',
@@ -268,6 +318,15 @@ describe('getAmsterdamKlantcontactConfig', () => {
 
   test('biedt e-mail en telefoonnummer aan als kanaal per zaak', () => {
     expect(config.zaakVoorkeur.kanalen).toEqual(['Email', 'Telefoonnummer']);
+  });
+
+  test('gebruikt Open Zaak uit de omgeving voor de zaakcontrole', () => {
+    expect(config.openZaak).toEqual({
+      url: `${remoteApiHost}/zaken/api/v1/`,
+      clientId: 'test-openzaak-client',
+      jwtSecret: 'test-openzaak-jwt-secret',
+      bronorganisatie: '123456782',
+    });
   });
 });
 
