@@ -5,6 +5,7 @@ import type {
   DienstverlenerSource,
   VerifyVerificationRequestResponse,
   ZaakKanaal,
+  ZaakVoorkeurZaakFrontend,
 } from './klantcontact-profieldienst-types.ts';
 import type { ApiResponse } from '../../../universal/helpers/api.ts';
 import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
@@ -63,6 +64,10 @@ export type KlantcontactBackend = {
     authProfileAndToken: AuthProfileAndToken,
     zaakIdentificatie: string
   ) => Promise<ApiResponse<boolean>>;
+  // De zaken waarvoor de klant een kanaal kan kiezen: de zaken waarvan de klant initiator is.
+  fetchZaken: (
+    authProfileAndToken: AuthProfileAndToken
+  ) => Promise<ApiResponse<ZaakVoorkeurZaakFrontend[]>>;
 };
 
 // De profielservice kent ook diensten waarvoor een gebruiker zich heeft aangesloten.

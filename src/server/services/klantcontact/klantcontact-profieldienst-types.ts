@@ -106,10 +106,18 @@ export type ZaakKanaalVoorkeurPayloadFrontend = {
   value: string;
 };
 
+// Een zaak in Open Zaak waarvoor de klant een kanaal kan kiezen.
+export type ZaakVoorkeurZaakFrontend = {
+  zaakIdentificatie: string;
+  omschrijving: string;
+};
+
 export type CommunicatievoorkeurenResponseFrontend = {
   standaardContactgegevens: ContactgegevenPerTypeFrontend | null;
   zaakKanaalVoorkeuren: ZaakKanaalVoorkeurFrontend[];
   aangeslotenDiensten?: DienstSource[];
+  // Leeg als de zaakvoorkeuren uit staan of Open Zaak niet bereikbaar is.
+  zaken?: ZaakVoorkeurZaakFrontend[];
 };
 
 export type DeleteContactgegevenResponseFrontend = {

@@ -6,3 +6,9 @@ export type KanaalSource = {
   documentatieLink: string;
   filters: string[];
 };
+
+export type AbonnementSource = {
+  url: string;
+  callbackUrl: string; // het endpoint van de abonnee, bijvoorbeeld de OMC
+  kanalen: { naam: string; filters?: Record<string, string> }[];
+};

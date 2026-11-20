@@ -66,4 +66,16 @@ describe('createKlantcontactBackend', () => {
 
     expect(response).toMatchObject({ status: 'ERROR', code: 503 });
   });
+
+  test.each(['openklant', 'profielservice'] as const)(
+    'de %s-backend haalt de zaken uit Open Zaak',
+    async (naam) => {
+      const response = await createKlantcontactBackend(naam, {
+        ...config,
+        openZaak: undefined,
+      }).fetchZaken(authProfileAndToken);
+
+      expect(response).toMatchObject({ status: 'ERROR', code: 503 });
+    }
+  );
 });

@@ -64,6 +64,7 @@ function getBackend(overrides: Partial<KlantcontactBackend> = {}) {
     deleteContactgegeven: vi.fn().mockResolvedValue(apiSuccessResult(null)),
     verifyContactgegeven: vi.fn(),
     zaakIsVanGebruiker: vi.fn(),
+    fetchZaken: vi.fn(),
     ...overrides,
   } satisfies KlantcontactBackend;
 }
@@ -435,11 +436,13 @@ describe('deleteZaakKanaalVoorkeur', () => {
       },
     };
     const backend = getBackend({
-      fetchContactgegevens: vi.fn().mockResolvedValue(
-        apiSuccessResult([
-          getContactgegeven({ id: 'zaakadres', referentie: 'Z-24-1' }),
-        ])
-      ),
+      fetchContactgegevens: vi
+        .fn()
+        .mockResolvedValue(
+          apiSuccessResult([
+            getContactgegeven({ id: 'zaakadres', referentie: 'Z-24-1' }),
+          ])
+        ),
     });
 
     const result = await deleteZaakKanaalVoorkeur(

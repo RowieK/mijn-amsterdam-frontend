@@ -4,6 +4,7 @@ import type { ReplyFnContext } from 'nock';
 import {
   fetchInitiatorRollen,
   fetchZaakByIdentificatie,
+  fetchZakenVanGebruiker,
   rolIsVanProfiel,
   zaakIsVanGebruiker,
 } from './openzaak-api-service.ts';
@@ -11,7 +12,7 @@ import {
   getOpenZaakConfig,
   type OpenZaakConfig,
 } from './openzaak-service-config.ts';
-import type { RolSource } from './openzaak-types.ts';
+import type { RolSource, ZaakMetRollenSource } from './openzaak-types.ts';
 import { remoteApiHost } from '../../../testing/setup.ts';
 import { getAuthProfileAndToken, remoteApi } from '../../../testing/utils.ts';
 import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
@@ -403,6 +404,107 @@ describe('openzaak-api-service', () => {
         content: null,
         code: 503,
       });
+    });
+  });
+
+  describe('fetchZakenVanGebruiker', () => {
+    function zaakMetRollen(
+      overrides: Partial<ZaakMetRollenSource> = {}
+    ): ZaakMetRollenSource {
+      return {
+        ...zaak,
+        omschrijving: 'Melding openbare ruimte',
+        startdatum: '2026-03-01',
+        einddatum: null,
+        _expand: { rollen: [rolNatuurlijkPersoon] },
+        ...overrides,
+      };
+    }
+
+    function mockZakenVanGebruiker(results: unknown[]) {
+      let authorization: string | undefined;
+      remoteApi
+        .get(`${BASE_PATH}/zaken`)
+        .query({
+          bronorganisatie: '123456782',
+          rol__betrokkeneIdentificatie__natuurlijkPersoon__inpBsn: BSN,
+          rol__omschrijvingGeneriek: 'initiator',
+          expand: 'rollen',
+        })
+        .reply(function (this: ReplyFnContext) {
+          authorization = this.req.headers.authorization as string;
+          return [200, paginated(results)];
+        });
+      return () => authorization;
+    }
+
+    test('geeft de zaken waarvan de gebruiker initiator is', async () => {
+      const getAuthorization = mockZakenVanGebruiker([zaakMetRollen()]);
+
+      const response = await fetchZakenVanGebruiker(config, getAuth());
+
+      expect(response).toEqual({ status: 'OK', content: [zaakMetRollen()] });
+      expect(getAuthorization()).toMatch(/^Bearer /);
+    });
+
+    test.each<[string, Partial<ZaakMetRollenSource>]>([
+      [
+        'de gebruiker is betrokken, maar geen initiator',
+        {
+          _expand: {
+            rollen: [
+              {
+                ...rolNatuurlijkPersoon,
+                omschrijvingGeneriek: 'belanghebbende',
+              },
+            ],
+          },
+        },
+      ],
+      [
+        'de initiator is iemand anders',
+        {
+          _expand: {
+            rollen: [
+              {
+                ...rolNatuurlijkPersoon,
+                betrokkeneIdentificatie: { inpBsn: '111222333' },
+              },
+            ],
+          },
+        },
+      ],
+      ['de rollen kwamen niet mee', { _expand: undefined }],
+      ['een andere bronorganisatie', { bronorganisatie: '000000000' }],
+    ])('laat een zaak weg als %s', async (_naam, overrides) => {
+      mockZakenVanGebruiker([zaakMetRollen(overrides)]);
+
+      const response = await fetchZakenVanGebruiker(config, getAuth());
+
+      expect(response).toEqual({ status: 'OK', content: [] });
+    });
+
+    test('geeft een lege lijst voor een ondernemer, zonder aanroep', async () => {
+      const response = await fetchZakenVanGebruiker(
+        config,
+        getAuth('commercial', KVK)
+      );
+
+      expect(response).toEqual({ status: 'OK', content: [] });
+    });
+
+    test('geeft een foutresultaat als Open Zaak een fout geeft', async () => {
+      remoteApi.get(`${BASE_PATH}/zaken`).query(true).reply(500);
+
+      const response = await fetchZakenVanGebruiker(config, getAuth());
+
+      expect(response).toMatchObject({ status: 'ERROR', content: null });
+    });
+
+    test('geeft 503 zonder configuratie', async () => {
+      const response = await fetchZakenVanGebruiker({}, getAuth());
+
+      expect(response).toMatchObject({ status: 'ERROR', code: 503 });
     });
   });
 });

@@ -7,6 +7,7 @@ import {
 import type {
   OpenZaakPaginatedSource,
   RolSource,
+  ZaakMetRollenSource,
   ZaakSource,
 } from './openzaak-types.ts';
 import {
@@ -177,4 +178,52 @@ export async function zaakIsVanGebruiker(
       rolIsVanProfiel(rol, authProfileAndToken.profile)
     )
   );
+}
+
+// De zaken waarvan de ingelogde gebruiker initiator is, binnen de bronorganisatie van de gemeente.
+// Het BSN-filter kijkt naar alle rollen van een zaak, en `rol__omschrijvingGeneriek` hoeft niet dezelfde rol
+// te treffen. Daarom komen de rollen mee (`expand=rollen`) en controleren we de initiator zelf.
+// Alleen de eerste pagina (100 zaken): genoeg voor een burger.
+// Ondernemers volgen later: een KVK-nummer staat bij een niet-natuurlijk persoon of een vestiging, twee filters.
+export async function fetchZakenVanGebruiker(
+  config: OpenZaakConfig,
+  authProfileAndToken: AuthProfileAndToken
+): Promise<ApiResponse<ZaakMetRollenSource[]>> {
+  if (!isConfigured(config)) {
+    return notConfiguredResult();
+  }
+
+  const { profile } = authProfileAndToken;
+
+  if (profile.profileType === 'commercial' || !profile.id) {
+    return apiSuccessResult([]);
+  }
+
+  const apiConfig = getCustomApiConfig(
+    { url: config.url },
+    {
+      method: 'GET',
+      headers: await getHeaders(config),
+      params: {
+        bronorganisatie: config.bronorganisatie,
+        rol__betrokkeneIdentificatie__natuurlijkPersoon__inpBsn: profile.id,
+        rol__omschrijvingGeneriek: ROL_OMSCHRIJVING_GENERIEK_INITIATOR,
+        expand: 'rollen',
+      },
+      formatUrl: ({ url }) => joinApiUrl(String(url), 'zaken'),
+      transformResponse: (
+        response: OpenZaakPaginatedSource<ZaakMetRollenSource>
+      ) =>
+        response.results.filter(
+          (zaak) =>
+            zaak.bronorganisatie === config.bronorganisatie &&
+            (zaak._expand?.rollen ?? []).some((rol) =>
+              rolIsVanProfiel(rol, profile)
+            )
+        ),
+      enableCache: false,
+    }
+  );
+
+  return requestData<ZaakMetRollenSource[]>(apiConfig);
 }

@@ -14,6 +14,14 @@ export type ZaakSource = {
   bronorganisatie: string;
 };
 
+// Een zaak uit `GET /zaken?expand=rollen`.
+export type ZaakMetRollenSource = ZaakSource & {
+  omschrijving: string;
+  startdatum: string;
+  einddatum: string | null;
+  _expand?: { rollen?: RolSource[] };
+};
+
 export type RolBetrokkeneType =
   | 'natuurlijk_persoon'
   | 'niet_natuurlijk_persoon'

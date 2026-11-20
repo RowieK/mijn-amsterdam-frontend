@@ -8,6 +8,7 @@ import type {
 } from './klantcontact-backend-types.ts';
 import {
   getIdentificatieType,
+  toZaakVoorkeurZaken,
   transformContactgegevenSource,
 } from './klantcontact-helpers.ts';
 import type {
@@ -20,11 +21,18 @@ import type {
   VerifyVerificationRequestResponse,
 } from './klantcontact-profieldienst-types.ts';
 import type { DienstverlenerSource } from './klantcontact-profieldienst-types.ts';
-import { apiErrorResult, apiSuccessResult, type ApiResponse, } from '../../../universal/helpers/api.ts';
+import {
+  apiErrorResult,
+  apiSuccessResult,
+  type ApiResponse,
+} from '../../../universal/helpers/api.ts';
 import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
 import { getCustomApiConfig } from '../../helpers/source-api-helpers.ts';
 import { requestData } from '../../helpers/source-api-request.ts';
-import { zaakIsVanGebruiker as zaakIsVanGebruikerInOpenZaak } from '../openzaak/openzaak-api-service.ts';
+import {
+  fetchZakenVanGebruiker,
+  zaakIsVanGebruiker as zaakIsVanGebruikerInOpenZaak,
+} from '../openzaak/openzaak-api-service.ts';
 
 export function normalizeDutchMobileNumber(value: string): string {
   const normalized = value.replace(/[\s()-]/g, '');
@@ -292,6 +300,11 @@ export function createProfielserviceBackend({
         openZaak,
         authProfileAndToken,
         zaakIdentificatie
+      ),
+    // Ook de zaken zelf komen uit Open Zaak.
+    fetchZaken: async (authProfileAndToken) =>
+      toZaakVoorkeurZaken(
+        await fetchZakenVanGebruiker(openZaak, authProfileAndToken)
       ),
   };
 }

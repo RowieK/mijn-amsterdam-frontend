@@ -6,15 +6,24 @@ import type {
   IdentificatieType,
   ZaakKanaal,
   ZaakKanaalVoorkeurFrontend,
+  ZaakVoorkeurZaakFrontend,
 } from './klantcontact-profieldienst-types.ts';
-import type { ApiResponse } from '../../../universal/helpers/api.ts';
+import {
+  apiSuccessResult,
+  type ApiResponse,
+} from '../../../universal/helpers/api.ts';
 import { toDateFormatted } from '../../../universal/helpers/date.ts';
+import type { ZaakMetRollenSource } from '../openzaak/openzaak-types.ts';
 
 // Patroon en maximale lengte van OpenKlant DigitaalAdres.referentie.
 export const ZAAK_REFERENTIE_PATTERN = {
   pattern: /^[-a-zA-Z0-9_]+$/,
   maxLength: 50,
 } as const;
+
+// Referentie van het algemene voorkeursadres van de partij (conventie van Den Haag, stap 4 van de adreskeuze
+// van de OMC). Dit adres hoort bij de partij en niet bij een zaak.
+export const PORTAALVOORKEUR_REFERENTIE = 'portaalvoorkeur';
 
 const identificatieTypeByProfileType: Record<ProfileType, IdentificatieType> = {
   private: 'BSN',
@@ -42,10 +51,13 @@ export function transformContactgegevenSource(
   };
 }
 
+// `portaalvoorkeur` past in het patroon, maar een zaakvoorkeur met die referentie zou het voorkeursadres van de
+// partij overschrijven of verwijderen.
 export function isValidZaakReferentie(referentie: string): boolean {
   return (
     referentie.length <= ZAAK_REFERENTIE_PATTERN.maxLength &&
-    ZAAK_REFERENTIE_PATTERN.pattern.test(referentie)
+    ZAAK_REFERENTIE_PATTERN.pattern.test(referentie) &&
+    referentie !== PORTAALVOORKEUR_REFERENTIE
   );
 }
 
@@ -79,10 +91,15 @@ function isZaakKanaal(
   );
 }
 
-// Een contactgegeven met een referentie hoort bij een zaak en niet bij de partij.
+// Een contactgegeven met een referentie hoort bij een zaak en niet bij de partij, behalve de `portaalvoorkeur`.
 // OpenKlant geeft een lege string als er geen referentie is.
-function hasReferentie(contactgegeven: ContactgegevenSource): boolean {
-  return !!contactgegeven.referentie;
+export function isZaakContactgegeven(
+  contactgegeven: Pick<ContactgegevenSource, 'referentie'>
+): boolean {
+  return (
+    !!contactgegeven.referentie &&
+    contactgegeven.referentie !== PORTAALVOORKEUR_REFERENTIE
+  );
 }
 
 export function getZaakKanaalVoorkeuren(
@@ -95,7 +112,8 @@ export function getZaakKanaalVoorkeuren(
   return contactgegevens.content
     .filter(
       (contactgegeven) =>
-        hasReferentie(contactgegeven) && isZaakKanaal(contactgegeven.type)
+        isZaakContactgegeven(contactgegeven) &&
+        isZaakKanaal(contactgegeven.type)
     )
     .map((contactgegeven) => ({
       // De referentie is de zaakidentificatie zolang de referentiestrategie die ongewijzigd doorgeeft.
@@ -120,15 +138,37 @@ export function getMostRecentByContactgegevenType(
     return contactGegevenDefault;
   }
 
+  // Volgorde: geverifieerd, dan het standaardadres, dan het nieuwste. OpenKlant geeft geen datums, dus daar
+  // beslist `isStandaardAdres` (isDefault). De sortering is stabiel: de laatste sortering weegt het zwaarst.
   const contactgegeven = contactgegevens.content
-    .filter((contact) => !hasReferentie(contact))
+    .filter((contact) => !isZaakContactgegeven(contact))
     .toSorted((a, b) =>
       String(b.lastUpdated).localeCompare(String(a.lastUpdated))
     )
+    .toSorted((a, b) => Number(b.isDefault) - Number(a.isDefault))
     .toSorted((a, b) => Number(b.isGeverifieerd) - Number(a.isGeverifieerd))
     .find((contact) => contact.type === contactgegevenType);
 
   return contactgegeven
     ? transformContactgegevenSource(contactgegeven, contactgegevenType)
     : contactGegevenDefault;
+}
+
+// Een afgesloten zaak (met einddatum) krijgt geen nieuwe status meer, dus ook geen notificatie: die tonen we niet.
+// Zonder omschrijving tonen we de identificatie.
+export function toZaakVoorkeurZaken(
+  zaken: ApiResponse<ZaakMetRollenSource[]>
+): ApiResponse<ZaakVoorkeurZaakFrontend[]> {
+  if (zaken.status !== 'OK') {
+    return zaken;
+  }
+
+  return apiSuccessResult(
+    zaken.content
+      .filter((zaak) => !zaak.einddatum)
+      .map((zaak) => ({
+        zaakIdentificatie: zaak.identificatie,
+        omschrijving: zaak.omschrijving || zaak.identificatie,
+      }))
+  );
 }

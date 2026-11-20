@@ -5,7 +5,10 @@ import type {
   GemeenteKlantcontactConfig,
   ProfielserviceBackend,
 } from './klantcontact-backend-types.ts';
-import { transformContactgegevenSource } from './klantcontact-helpers.ts';
+import {
+  toZaakVoorkeurZaken,
+  transformContactgegevenSource,
+} from './klantcontact-helpers.ts';
 import type {
   DigitaalAdresPayloadSource,
   DigitaalAdresSource,
@@ -28,7 +31,10 @@ import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
 import { getCustomApiConfig } from '../../helpers/source-api-helpers.ts';
 import { requestData } from '../../helpers/source-api-request.ts';
 import { joinApiUrl } from '../../helpers/zgw-api-helpers.ts';
-import { zaakIsVanGebruiker as zaakIsVanGebruikerInOpenZaak } from '../openzaak/openzaak-api-service.ts';
+import {
+  fetchZakenVanGebruiker,
+  zaakIsVanGebruiker as zaakIsVanGebruikerInOpenZaak,
+} from '../openzaak/openzaak-api-service.ts';
 
 type OpenKlantConfig = NonNullable<GemeenteKlantcontactConfig['openKlant']>;
 type ConfiguredOpenKlantConfig = { url: string; token: string };
@@ -121,7 +127,9 @@ function toContactgegevenFrontend(
   );
 }
 
-function getDigitaleAdressen(partij: PartijSource): DigitaalAdresSource[] {
+export function getDigitaleAdressen(
+  partij: PartijSource
+): DigitaalAdresSource[] {
   return (
     partij._expand?.digitaleAdressen ?? partij._expand?.digitale_adressen ?? []
   );
@@ -145,7 +153,8 @@ function partijHoortBijProfiel(
 }
 
 // Geeft de partij van de ingelogde gebruiker, inclusief de digitale adressen, of `null` als er geen partij is.
-async function fetchPartij(
+// Ook gebruikt door het seedscript (zgw:seed).
+export async function fetchPartij(
   config: OpenKlantConfig,
   authProfileAndToken: AuthProfileAndToken
 ): Promise<ApiResponse<PartijSource | null>> {
@@ -401,6 +410,10 @@ export function createOpenKlantBackend({
         openZaak,
         authProfileAndToken,
         zaakIdentificatie
+      ),
+    fetchZaken: async (authProfileAndToken) =>
+      toZaakVoorkeurZaken(
+        await fetchZakenVanGebruiker(openZaak, authProfileAndToken)
       ),
     // Open Klant kent geen diensten waarop een gebruiker is aangesloten.
     fetchDienstverlener: (_authProfileAndToken, dienstverlenerNaam) =>

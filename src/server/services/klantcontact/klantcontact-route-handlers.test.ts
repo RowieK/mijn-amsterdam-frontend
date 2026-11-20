@@ -112,6 +112,10 @@ describe('klantcontact-route-handlers', () => {
         naam: 'ongeldige zaakidentificatie',
         body: { zaakIdentificatie: 'Z/24/1' },
       },
+      {
+        naam: 'de referentie van het voorkeursadres van de partij',
+        body: { zaakIdentificatie: 'portaalvoorkeur' },
+      },
     ])('geeft 400 zonder backend-aanroepen: $naam', async ({ body }) => {
       req.body = { ...req.body, ...body };
 
@@ -214,6 +218,25 @@ describe('klantcontact-route-handlers', () => {
         })
       );
       expect(nieuwContactgegeven.isVerified).toBe(false);
+    });
+
+    test('accepteert het geverifieerde voorkeursadres van de partij (referentie portaalvoorkeur)', async () => {
+      fetchContactgegevens.mockResolvedValue(
+        apiSuccessResult([
+          getContactgegeven({ id: 'portaal', referentie: 'portaalvoorkeur' }),
+        ])
+      );
+
+      await handleSetZaakKanaalVoorkeur(req, res);
+
+      expect(createContactgegeven).toHaveBeenCalledWith(
+        res.locals.authProfileAndToken,
+        'Email',
+        GEVERIFIEERD_ADRES,
+        { referentie: ZAAK, isDefault: false }
+      );
+      // Het voorkeursadres van de partij is geen oud zaakadres en blijft staan.
+      expect(deleteContactgegeven).not.toHaveBeenCalled();
     });
 
     test('vervangt een bestaand zaakadres: eerst aanmaken, dan verwijderen', async () => {
