@@ -171,6 +171,40 @@ export function withoutThemaContactgegevens(
   };
 }
 
+// Alle eigen adressen van een type (zonder zaakadressen), gevalideerde eerst en daarna de meest recente.
+// Hetzelfde adres in een andere schrijfwijze (hoofdletters) telt als één adres.
+export function getAllByContactgegevenType(
+  contactgegevens: ApiResponse<ContactgegevenSource[]>,
+  contactgegevenType: ContactgegevenType
+): ContactgegevenFrontend[] {
+  if (contactgegevens.status !== 'OK') {
+    return [];
+  }
+
+  const gezien = new Set<string>();
+
+  return contactgegevens.content
+    .filter(
+      (contact) =>
+        contact.type === contactgegevenType && !hasReferentie(contact)
+    )
+    .toSorted((a, b) =>
+      String(b.lastUpdated).localeCompare(String(a.lastUpdated))
+    )
+    .toSorted((a, b) => Number(b.isGeverifieerd) - Number(a.isGeverifieerd))
+    .filter((contact) => {
+      const sleutel = contact.waarde.trim().toLowerCase();
+      if (gezien.has(sleutel)) {
+        return false;
+      }
+      gezien.add(sleutel);
+      return true;
+    })
+    .map((contact) =>
+      transformContactgegevenSource(contact, contactgegevenType)
+    );
+}
+
 export function getMostRecentByContactgegevenType(
   contactgegevens: ApiResponse<ContactgegevenSource[]>,
   contactgegevenType: ContactgegevenType
@@ -196,3 +230,5 @@ export function getMostRecentByContactgegevenType(
     ? transformContactgegevenSource(contactgegeven, contactgegevenType)
     : contactGegevenDefault;
 }
+
+export { isValidEmail } from '../../../universal/helpers/email.ts';

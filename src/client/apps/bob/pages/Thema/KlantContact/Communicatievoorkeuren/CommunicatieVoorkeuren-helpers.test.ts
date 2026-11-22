@@ -4,8 +4,13 @@ import {
   formatZaakKanaal,
   getStandaardNotificatieKanalen,
   findKanaalVoorContactgegeven,
+  getEmailadressen,
+  getKanaalSleutel,
+  getStandaardEmailadres,
   getVerifiedZaakKanalen,
   getZaakThemaNotificaties,
+  LEEG_EMAILADRES,
+  sorteerEmailadressen,
 } from './CommunicatieVoorkeuren-helpers.ts';
 import type {
   ContactgegevenFrontend,
@@ -268,5 +273,141 @@ describe('getZaakThemaNotificaties', () => {
         true
       );
     });
+  });
+});
+
+describe('meerdere e-mailadressen', () => {
+  const oudGevalideerd = createContactgegeven({
+    id: 'oud',
+    type: 'Email',
+    value: 'oud@example.com',
+    dateModified: '2026-01-01T10:00:00Z',
+  });
+  const recentGevalideerd = createContactgegeven({
+    id: 'recent',
+    type: 'Email',
+    value: 'recent@example.com',
+    dateModified: '2026-03-01T10:00:00Z',
+  });
+  const nieuwOngevalideerd = createContactgegeven({
+    id: 'nieuw',
+    type: 'Email',
+    value: 'nieuw@example.com',
+    isVerified: false,
+    dateModified: '2026-05-01T10:00:00Z',
+  });
+
+  describe('sorteerEmailadressen', () => {
+    it('zet gevalideerde adressen eerst en daarna de meest recent gewijzigde', () => {
+      expect(
+        sorteerEmailadressen([
+          nieuwOngevalideerd,
+          oudGevalideerd,
+          recentGevalideerd,
+        ]).map(({ id }) => id)
+      ).toEqual(['recent', 'oud', 'nieuw']);
+    });
+
+    it('telt hetzelfde adres in een andere schrijfwijze één keer en houdt het gevalideerde', () => {
+      expect(
+        sorteerEmailadressen([
+          createContactgegeven({
+            id: 'hoofdletters',
+            type: 'Email',
+            value: 'OUD@Example.com',
+            isVerified: false,
+          }),
+          oudGevalideerd,
+        ]).map(({ id }) => id)
+      ).toEqual(['oud']);
+    });
+
+    it('laat adressen zonder waarde weg', () => {
+      expect(
+        sorteerEmailadressen([
+          createContactgegeven({ type: 'Email', value: null }),
+        ])
+      ).toEqual([]);
+    });
+  });
+
+  describe('getStandaardEmailadres', () => {
+    it('is het eerste adres van de gesorteerde lijst', () => {
+      expect(
+        getStandaardEmailadres([nieuwOngevalideerd, oudGevalideerd]).id
+      ).toBe('oud');
+    });
+
+    it('is een leeg adres zonder adressen', () => {
+      expect(getStandaardEmailadres([])).toEqual(LEEG_EMAILADRES);
+    });
+  });
+
+  describe('getEmailadressen', () => {
+    it('geeft de lijst van de BFF, gesorteerd', () => {
+      expect(
+        getEmailadressen(createStandaard(), [
+          nieuwOngevalideerd,
+          recentGevalideerd,
+        ]).map(({ id }) => id)
+      ).toEqual(['recent', 'nieuw']);
+    });
+
+    it('valt zonder lijst terug op het standaardadres', () => {
+      expect(
+        getEmailadressen(createStandaard()).map(({ value }) => value)
+      ).toEqual(['a@example.com']);
+    });
+
+    it('geeft niets als er geen lijst en geen standaardadres is', () => {
+      expect(getEmailadressen(null)).toEqual([]);
+      expect(
+        getEmailadressen(
+          createStandaard({
+            Email: createContactgegeven({ type: 'Email', value: null }),
+          })
+        )
+      ).toEqual([]);
+    });
+  });
+
+  describe('getVerifiedZaakKanalen met meerdere adressen', () => {
+    it('biedt elk gevalideerd e-mailadres aan, maar geen ongevalideerd adres', () => {
+      expect(
+        getVerifiedZaakKanalen(createStandaard(), [
+          recentGevalideerd,
+          oudGevalideerd,
+          nieuwOngevalideerd,
+        ]).map(getKanaalSleutel)
+      ).toEqual([
+        'Email:recent@example.com',
+        'Email:oud@example.com',
+        'Telefoonnummer:0612345678',
+      ]);
+    });
+
+    it('gebruikt zonder lijst het standaardadres', () => {
+      expect(
+        getVerifiedZaakKanalen(createStandaard()).map(getKanaalSleutel)
+      ).toEqual(['Email:a@example.com', 'Telefoonnummer:0612345678']);
+    });
+  });
+
+  it('findKanaalVoorContactgegeven kiest het adres met dezelfde waarde, ook bij meerdere adressen', () => {
+    const kanalen = getVerifiedZaakKanalen(createStandaard(), [
+      recentGevalideerd,
+      oudGevalideerd,
+    ]);
+
+    expect(
+      findKanaalVoorContactgegeven(
+        kanalen,
+        createContactgegeven({
+          id: 'kopie',
+          type: 'Email',
+          value: 'oud@example.com',
+        })
+      )?.id
+    ).toBe('oud');
   });
 });

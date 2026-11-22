@@ -11,7 +11,7 @@ import type {
 import type { DisplayProps } from '../../../../../components/Table/TableV2.types.ts';
 import { isEnabled } from '../../../config/feature-toggles.ts';
 
-export type InstelAction = 'instellen' | 'wijzigen' | 'valideren';
+export type InstelAction = 'instellen' | 'wijzigen' | 'valideren' | 'toevoegen';
 
 export type ContactmomentFrontendFinal = ContactmomentFrontend & {
   kanaalEl: ReactNode;
@@ -69,7 +69,7 @@ export const themaConfig = {
   detailPageContactgegevenInstellen: {
     route: {
       get path(): string {
-        return `${themaConfig.route.path}/contactgegeven-instellen/:contactgegeven/:step/:action?`;
+        return `${themaConfig.route.path}/contactgegeven-instellen/:contactgegeven/:step/:action?/:id?`;
       },
       documentTitle: `Contactgegeven instellen | ${THEMA_TITLE}`,
       trackingUrl: null,

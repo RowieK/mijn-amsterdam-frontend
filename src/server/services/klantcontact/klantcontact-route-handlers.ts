@@ -1,5 +1,4 @@
 import { HttpStatusCode } from 'axios';
-import createDebugger from 'debug';
 import type { Request } from 'express';
 
 import {
@@ -15,7 +14,11 @@ import {
   setThemaKanaalVoorkeur,
   setZaakKanaalVoorkeur,
 } from './klantcontact-communicatievoorkeuren.ts';
-import { getThemaId, getValidZaakReferentie } from './klantcontact-helpers.ts';
+import {
+  getThemaId,
+  getValidZaakReferentie,
+  isValidEmail,
+} from './klantcontact-helpers.ts';
 import { normalizeDutchMobileNumber } from './klantcontact-profieldienst.ts';
 import { apiErrorResult } from '../../../universal/helpers/api.ts';
 import {
@@ -27,16 +30,11 @@ import {
   type ResponseAuthenticated,
 } from '../../routing/route-helpers.ts';
 
-const debugContactRequestData = createDebugger(
-  'contact-api:route-request-data'
-);
-
 export async function handleVerifyContactgegeven(
   req: Request,
   res: ResponseAuthenticated
 ) {
-  debugContactRequestData(req.body);
-
+  // Let op: geen logregels met req.body, dat bevat contactgegevens.
   const { value, code, type } = req.body;
 
   const isSupportedType =
@@ -91,11 +89,26 @@ export async function handleFetchCommunicatievoorkeuren(
   return sendResponse(res, communicatievoorkeurenResponse);
 }
 
+function isZelfdeWaarde(type: string, a: string, b: string): boolean {
+  if (type === ContactgegevenTypes.Telefoonnummer) {
+    try {
+      return normalizeDutchMobileNumber(a) === normalizeDutchMobileNumber(b);
+    } catch {
+      return a === b;
+    }
+  }
+
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+// Met `toevoegen` (formulier: de tekst 'true') voegt de klant een extra adres toe. Dan controleren we op een dubbel adres en wordt het
+// adres alleen het standaardadres als er nog geen is. Zonder `toevoegen` (valideer opnieuw, wijzig) verandert
+// er niets aan dat gedrag. Contactgegevens (value) komen niet in foutmeldingen of logs.
 export async function handleCreateContactgegeven(
   req: Request,
   res: ResponseAuthenticated
 ) {
-  const { value, type } = req.body;
+  const { value, type, toevoegen } = req.body;
 
   if (
     !ContactgegevenTypeValues.includes(type) ||
@@ -119,11 +132,68 @@ export async function handleCreateContactgegeven(
     }
   }
 
-  const response = await klantcontactBackend.createContactgegeven(
-    res.locals.authProfileAndToken,
-    type,
-    value
-  );
+  if (type === ContactgegevenTypes.Email && !isValidEmail(value.trim())) {
+    return sendBadRequest(res, 'Voer een geldig e-mailadres in');
+  }
+
+  let options: { isDefault: boolean } | undefined;
+
+  const kanToevoegen =
+    type === ContactgegevenTypes.Email ||
+    type === ContactgegevenTypes.Telefoonnummer;
+
+  if ((toevoegen === true || toevoegen === 'true') && kanToevoegen) {
+    const contactgegevens = await klantcontactBackend.fetchContactgegevens(
+      res.locals.authProfileAndToken
+    );
+
+    if (contactgegevens.status !== 'OK') {
+      return sendInternalServerError(
+        res,
+        'Ophalen van de contactgegevens mislukt'
+      );
+    }
+
+    // Zaakadressen en themakeuzes zijn kopieën van een eigen adres en tellen niet mee.
+    const eigenAdressen = contactgegevens.content.filter(
+      (contactgegeven) =>
+        contactgegeven.type === type &&
+        !contactgegeven.referentie &&
+        !getThemaId(klantcontactConfig, contactgegeven)
+    );
+
+    if (
+      eigenAdressen.some((contactgegeven) =>
+        isZelfdeWaarde(type, contactgegeven.waarde, value)
+      )
+    ) {
+      return sendResponse(
+        res,
+        apiErrorResult(
+          type === ContactgegevenTypes.Email
+            ? 'Dit e-mailadres is al toegevoegd'
+            : 'Dit telefoonnummer is al toegevoegd',
+          null,
+          HttpStatusCode.Conflict
+        )
+      );
+    }
+
+    options = { isDefault: eigenAdressen.length === 0 };
+  }
+
+  const response = options
+    ? await klantcontactBackend.createContactgegeven(
+        res.locals.authProfileAndToken,
+        type,
+        value,
+        options
+      )
+    : await klantcontactBackend.createContactgegeven(
+        res.locals.authProfileAndToken,
+        type,
+        value
+      );
 
   return sendResponse(res, response);
 }
@@ -132,10 +202,36 @@ export async function handleDeleteContactgegeven(
   req: Request,
   res: ResponseAuthenticated
 ) {
-  const { id } = req.body;
+  const { id } = req.body ?? {};
 
-  if (!id) {
+  if (typeof id !== 'string' || !id) {
     return sendBadRequest(res, 'Contactgegeven ID is required');
+  }
+
+  // Alleen adressen uit het eigen profiel mogen worden verwijderd. Lukt het ophalen niet, dan verwijderen
+  // we niets (fail closed).
+  const contactgegevens = await klantcontactBackend.fetchContactgegevens(
+    res.locals.authProfileAndToken
+  );
+
+  if (contactgegevens.status !== 'OK') {
+    return sendInternalServerError(
+      res,
+      'Ophalen van de contactgegevens mislukt'
+    );
+  }
+
+  if (
+    !contactgegevens.content.some((contactgegeven) => contactgegeven.id === id)
+  ) {
+    return sendResponse(
+      res,
+      apiErrorResult(
+        'Forbidden: het contactgegeven hoort niet bij de ingelogde gebruiker',
+        null,
+        HttpStatusCode.Forbidden
+      )
+    );
   }
 
   const response = await klantcontactBackend.deleteContactgegeven(

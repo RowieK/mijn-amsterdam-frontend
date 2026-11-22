@@ -6,6 +6,7 @@ import { transformContactgegevenSource } from './klantcontact-helpers.ts';
 import type { ContactgegevenSource } from './klantcontact-profieldienst-types.ts';
 import {
   handleCreateContactgegeven,
+  handleDeleteContactgegeven,
   handleDeleteZaakKanaalVoorkeur,
   handleSetZaakKanaalVoorkeur,
   handleVerifyContactgegeven,
@@ -434,6 +435,225 @@ describe('klantcontact-route-handlers', () => {
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(verifyContactgegeven).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handleCreateContactgegeven (e-mailadres)', () => {
+    let req: Request;
+    let res: ResponseAuthenticated;
+    let createContactgegeven: MockInstance;
+    let fetchContactgegevens: MockInstance;
+
+    beforeEach(() => {
+      req = RequestMock.new().get();
+      res = ResponseAuthenticatedMock.new();
+      createContactgegeven = vi
+        .spyOn(klantcontactBackend, 'createContactgegeven')
+        .mockResolvedValue(apiSuccessResult(nieuwContactgegeven));
+      fetchContactgegevens = vi
+        .spyOn(klantcontactBackend, 'fetchContactgegevens')
+        .mockResolvedValue(apiSuccessResult(contactgegevens));
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    test.each(['geen-apenstaart', 'a@b', 'a b@example.org', '@example.org'])(
+      'weigert %s met 400 zonder backend-aanroep',
+      async (value) => {
+        req.body = { type: 'Email', value };
+
+        await handleCreateContactgegeven(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(createContactgegeven).not.toHaveBeenCalled();
+      }
+    );
+
+    test('zonder toevoegen (valideer opnieuw of wijzig) wordt niet op dubbel gecontroleerd', async () => {
+      req.body = { type: 'Email', value: GEVERIFIEERD_ADRES };
+
+      await handleCreateContactgegeven(req, res);
+
+      expect(fetchContactgegevens).not.toHaveBeenCalled();
+      expect(createContactgegeven).toHaveBeenCalledWith(
+        res.locals.authProfileAndToken,
+        'Email',
+        GEVERIFIEERD_ADRES
+      );
+    });
+
+    test.each([
+      GEVERIFIEERD_ADRES,
+      'Mokum@Example.org',
+      ` ${ONGEVERIFIEERD_ADRES} `,
+    ])(
+      'weigert een dubbel adres (%s) bij toevoegen met 409 en maakt niets aan',
+      async (value) => {
+        req.body = { type: 'Email', value, toevoegen: true };
+
+        await handleCreateContactgegeven(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(409);
+        expect(createContactgegeven).not.toHaveBeenCalled();
+      }
+    );
+
+    test('de melding bij een dubbel adres noemt het adres niet', async () => {
+      req.body = { type: 'Email', value: GEVERIFIEERD_ADRES, toevoegen: true };
+
+      await handleCreateContactgegeven(req, res);
+
+      expect(JSON.stringify(vi.mocked(res.send).mock.calls)).not.toContain(
+        GEVERIFIEERD_ADRES
+      );
+    });
+
+    test('een zaakadres met dezelfde waarde telt niet als dubbel', async () => {
+      req.body = { type: 'Email', value: ZAAK_ADRES, toevoegen: true };
+
+      await handleCreateContactgegeven(req, res);
+
+      expect(res.status).not.toHaveBeenCalledWith(409);
+      expect(createContactgegeven).toHaveBeenCalled();
+    });
+
+    test('een extra adres naast bestaande adressen wordt geen standaardadres', async () => {
+      req.body = {
+        type: 'Email',
+        value: 'extra@example.org',
+        toevoegen: true,
+      };
+
+      await handleCreateContactgegeven(req, res);
+
+      expect(createContactgegeven).toHaveBeenCalledWith(
+        res.locals.authProfileAndToken,
+        'Email',
+        'extra@example.org',
+        { isDefault: false }
+      );
+    });
+
+    test('het eerste adres is wel het standaardadres', async () => {
+      fetchContactgegevens.mockResolvedValue(apiSuccessResult([]));
+      req.body = {
+        type: 'Email',
+        value: 'eerste@example.org',
+        toevoegen: true,
+      };
+
+      await handleCreateContactgegeven(req, res);
+
+      expect(createContactgegeven).toHaveBeenCalledWith(
+        res.locals.authProfileAndToken,
+        'Email',
+        'eerste@example.org',
+        { isDefault: true }
+      );
+    });
+
+    test('geeft een foutstatus en maakt niets aan als het profiel niet op te halen is', async () => {
+      fetchContactgegevens.mockResolvedValue(apiErrorResult('fout', null));
+      req.body = {
+        type: 'Email',
+        value: 'extra@example.org',
+        toevoegen: true,
+      };
+
+      await handleCreateContactgegeven(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(createContactgegeven).not.toHaveBeenCalled();
+    });
+
+    test("herkent toevoegen ook als de tekst 'true' (formulierdata van de client)", async () => {
+      req.body = {
+        type: 'Email',
+        value: GEVERIFIEERD_ADRES,
+        toevoegen: 'true',
+      };
+
+      await handleCreateContactgegeven(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(createContactgegeven).not.toHaveBeenCalled();
+    });
+
+    test.each(['false', 'ja', 1, ''])(
+      'behandelt toevoegen=%j als gewone aanmaak zonder dubbelcheck',
+      async (toevoegen) => {
+        req.body = { type: 'Email', value: GEVERIFIEERD_ADRES, toevoegen };
+
+        await handleCreateContactgegeven(req, res);
+
+        expect(fetchContactgegevens).not.toHaveBeenCalled();
+      }
+    );
+  });
+
+  describe('handleDeleteContactgegeven', () => {
+    let req: Request;
+    let res: ResponseAuthenticated;
+    let deleteContactgegeven: MockInstance;
+    let fetchContactgegevens: MockInstance;
+
+    beforeEach(() => {
+      req = RequestMock.new().get();
+      res = ResponseAuthenticatedMock.new();
+      deleteContactgegeven = vi
+        .spyOn(klantcontactBackend, 'deleteContactgegeven')
+        .mockResolvedValue(apiSuccessResult(null));
+      fetchContactgegevens = vi
+        .spyOn(klantcontactBackend, 'fetchContactgegevens')
+        .mockResolvedValue(apiSuccessResult(contactgegevens));
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    test('verwijdert een adres uit het eigen profiel', async () => {
+      req.body = { id: '2' };
+
+      await handleDeleteContactgegeven(req, res);
+
+      expect(deleteContactgegeven).toHaveBeenCalledWith(
+        res.locals.authProfileAndToken,
+        '2'
+      );
+    });
+
+    test('weigert met 403 het id van een ander (niet in het eigen profiel) en verwijdert niets', async () => {
+      req.body = { id: 'van-een-ander' };
+
+      await handleDeleteContactgegeven(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(deleteContactgegeven).not.toHaveBeenCalled();
+    });
+
+    test.each([undefined, '', 1, { $ne: null }, ['2']])(
+      'weigert id %j met 400',
+      async (id) => {
+        req.body = { id };
+
+        await handleDeleteContactgegeven(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(deleteContactgegeven).not.toHaveBeenCalled();
+      }
+    );
+
+    test('weigert met een foutstatus en verwijdert niets als het profiel niet op te halen is (fail closed)', async () => {
+      fetchContactgegevens.mockResolvedValue(apiErrorResult('fout', null));
+      req.body = { id: '2' };
+
+      await handleDeleteContactgegeven(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(deleteContactgegeven).not.toHaveBeenCalled();
     });
   });
 });

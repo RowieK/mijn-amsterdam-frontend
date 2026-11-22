@@ -78,6 +78,7 @@ export function KlantContactThema() {
                 aangeslotenDiensten={
                   communicatievoorkeuren?.aangeslotenDiensten
                 }
+                emailadressen={communicatievoorkeuren?.emailadressen}
                 zaakKanaalVoorkeuren={
                   communicatievoorkeuren?.zaakKanaalVoorkeuren
                 }

@@ -231,7 +231,7 @@ describe('CommunicatieVoorkeuren', () => {
         .getAllByRole('link', { name: 'valideer opnieuw' })
         .map((link) => link.getAttribute('href'));
       expect(hrefs).toEqual([
-        '/mijn-contact/contactgegeven-instellen/Email/1/valideren',
+        '/mijn-contact/contactgegeven-instellen/Email/1/valideren/email-1',
         '/mijn-contact/contactgegeven-instellen/Telefoonnummer/1/valideren',
       ]);
       expect(
@@ -239,7 +239,7 @@ describe('CommunicatieVoorkeuren', () => {
           .getAllByRole('link', { name: 'wijzig' })
           .map((link) => link.getAttribute('href'))
       ).toEqual([
-        '/mijn-contact/contactgegeven-instellen/Email/1/wijzigen',
+        '/mijn-contact/contactgegeven-instellen/Email/1/wijzigen/email-1',
         '/mijn-contact/contactgegeven-instellen/Telefoonnummer/1/wijzigen',
       ]);
       expect(screen.getByRole('button', { name: 'verwijder' })).toBeVisible();
@@ -261,7 +261,7 @@ describe('CommunicatieVoorkeuren', () => {
       ).toBeInTheDocument();
       expect(screen.getByRole('link', { name: 'valideer' })).toHaveAttribute(
         'href',
-        '/mijn-contact/contactgegeven-instellen/Email/1/valideren'
+        '/mijn-contact/contactgegeven-instellen/Email/1/valideren/email-1'
       );
     });
 
@@ -522,7 +522,11 @@ describe('CommunicatieVoorkeuren', () => {
         within(group)
           .getAllByRole('radio')
           .map((radio) => radio.getAttribute('value'))
-      ).toEqual(['standaard', 'Email', 'Telefoonnummer']);
+      ).toEqual([
+        'standaard',
+        'Email:test@example.com',
+        'Telefoonnummer:0612345678',
+      ]);
       expect(
         within(group).getByRole('radio', { name: 'E-mail: test@example.com' })
       ).toBeInTheDocument();
@@ -764,7 +768,11 @@ describe('CommunicatieVoorkeuren', () => {
         within(group)
           .getAllByRole('radio')
           .map((radio) => radio.getAttribute('value'))
-      ).toEqual(['standaard', 'Email', 'Telefoonnummer']);
+      ).toEqual([
+        'standaard',
+        'Email:test@example.com',
+        'Telefoonnummer:0612345678',
+      ]);
     });
 
     it('zet de themakeuze met de payload die de BFF verwacht en bewaart het antwoord', async () => {
@@ -887,6 +895,179 @@ describe('CommunicatieVoorkeuren', () => {
       expect(getErfpachtRow()).toHaveTextContent(
         'e-mail: test@example.com, sms: 0612345678'
       );
+    });
+  });
+
+  describe('meerdere e-mailadressen', () => {
+    const tweedeEmail = createContactgegeven({
+      id: 'email-2',
+      type: 'Email',
+      value: 'tweede@example.com',
+      dateModified: '2026-05-01T10:00:00.000Z',
+    });
+    const eersteEmail = getStandaardContactgegevens().Email;
+    const emailadressen = [eersteEmail, tweedeEmail];
+
+    function setEmailadressenInStore() {
+      setStateInStore([]);
+      const { KLANT_CONTACT } = useAppStateStore.getState();
+      useAppStateStore.setState({
+        KLANT_CONTACT: {
+          ...KLANT_CONTACT,
+          content: {
+            ...KLANT_CONTACT.content,
+            communicatievoorkeuren: {
+              ...KLANT_CONTACT.content?.communicatievoorkeuren,
+              emailadressen,
+            },
+          },
+        } as unknown as ApiResponse<KlantcontactResponseData>,
+      });
+    }
+
+    it('toont elk e-mailadres met zijn eigen acties', () => {
+      renderCommunicatieVoorkeuren({ emailadressen });
+
+      const blok = getBlock('E-mailadres');
+      expect(blok).toHaveTextContent('test@example.com');
+      expect(blok).toHaveTextContent('tweede@example.com');
+      expect(
+        within(blok)
+          .getAllByRole('link', { name: 'wijzig' })
+          .map((link) => link.getAttribute('href'))
+      ).toEqual([
+        '/mijn-contact/contactgegeven-instellen/Email/1/wijzigen/email-1',
+        '/mijn-contact/contactgegeven-instellen/Email/1/wijzigen/email-2',
+      ]);
+      expect(
+        within(blok).getAllByRole('button', { name: 'verwijder' })
+      ).toHaveLength(2);
+    });
+
+    it('toont een link om nog een e-mailadres toe te voegen', () => {
+      renderCommunicatieVoorkeuren({ emailadressen });
+
+      expect(
+        screen.getByRole('link', { name: 'Voeg nog een e-mailadres toe' })
+      ).toHaveAttribute(
+        'href',
+        '/mijn-contact/contactgegeven-instellen/Email/1/toevoegen'
+      );
+    });
+
+    it('toont de toevoeglink niet zolang er nog geen e-mailadres is', () => {
+      renderCommunicatieVoorkeuren({
+        standaardContactgegevens: getStandaardContactgegevens({
+          Email: createContactgegeven({ id: null, type: 'Email', value: null }),
+        }),
+        emailadressen: [],
+      });
+
+      expect(
+        screen.queryByRole('link', { name: 'Voeg nog een e-mailadres toe' })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'Geef uw e-mailadres aan ons door' })
+      ).toBeInTheDocument();
+    });
+
+    it('verwijdert alleen het gekozen e-mailadres', async () => {
+      const user = userEvent.setup();
+      setEmailadressenInStore();
+      const deleteScope = bffApi
+        .post('/services/klantcontact/contactgegeven/delete', /id=email-2/)
+        .reply(200, { status: 'OK', content: null });
+
+      renderCommunicatieVoorkeuren({ emailadressen });
+
+      await user.click(
+        within(getBlock('E-mailadres')).getAllByRole('button', {
+          name: 'verwijder',
+        })[1]
+      );
+      await user.click(screen.getByRole('button', { name: 'Ja, verwijderen' }));
+
+      await waitFor(() => {
+        expect(deleteScope.isDone()).toBe(true);
+      });
+      await waitFor(() => {
+        expect(
+          useAppStateStore
+            .getState()
+            .KLANT_CONTACT.content?.communicatievoorkeuren?.emailadressen?.map(
+              ({ id }) => id
+            )
+        ).toEqual(['email-1']);
+      });
+    });
+
+    describe('kanaalkeuze', () => {
+      beforeEach(() => {
+        setZaakvoorkeurenToggle(true);
+      });
+
+      it('biedt per zaak elk gevalideerd e-mailadres aan', async () => {
+        const user = userEvent.setup();
+        renderCommunicatieVoorkeuren({ zaakThemas, emailadressen });
+
+        await user.click(
+          within(getErfpachtRow()).getByRole('button', { name: 'wijzig' })
+        );
+
+        const group = screen.getByRole('group', {
+          name: new RegExp(ZAAK_1),
+        });
+        expect(
+          within(group)
+            .getAllByRole('radio')
+            .map((radio) => radio.getAttribute('value'))
+        ).toEqual([
+          'standaard',
+          'Email:test@example.com',
+          'Email:tweede@example.com',
+          'Telefoonnummer:0612345678',
+        ]);
+      });
+
+      it('slaat de keuze voor het tweede e-mailadres op met dat adres', async () => {
+        const user = userEvent.setup();
+        const createScope = bffApi
+          .post('/services/klantcontact/zaakvoorkeur/set', {
+            zaakIdentificatie: ZAAK_1,
+            kanaal: 'Email',
+            value: 'tweede@example.com',
+          })
+          .reply(200, {
+            status: 'OK',
+            content: createVoorkeur(ZAAK_1, {
+              type: 'Email',
+              value: 'tweede@example.com',
+            }),
+          });
+
+        renderCommunicatieVoorkeuren({ zaakThemas, emailadressen });
+        await user.click(
+          within(getErfpachtRow()).getByRole('button', { name: 'wijzig' })
+        );
+
+        const group = screen.getByRole('group', {
+          name: new RegExp(ZAAK_1),
+        });
+        await user.click(
+          within(group).getByRole('radio', {
+            name: 'E-mail: tweede@example.com',
+          })
+        );
+        await user.click(
+          within(group.closest('form') as HTMLFormElement).getByRole('button', {
+            name: 'Opslaan',
+          })
+        );
+
+        await waitFor(() => {
+          expect(createScope.isDone()).toBe(true);
+        });
+      });
     });
   });
 });

@@ -4,6 +4,7 @@ import type {
   ProfielserviceBackend,
 } from './klantcontact-backend-types.ts';
 import {
+  getAllByContactgegevenType,
   getMostRecentByContactgegevenType,
   getThemaId,
   getThemaKanaalVoorkeuren,
@@ -125,6 +126,10 @@ export async function fetchCommunicatievoorkeuren(
   return apiSuccessResult({
     aangeslotenDiensten,
     standaardContactgegevens,
+    emailadressen: getAllByContactgegevenType(
+      standaardBron,
+      ContactgegevenTypes.Email
+    ),
     zaakKanaalVoorkeuren: getZaakKanaalVoorkeuren(contactgegevens),
     themaKanaalVoorkeuren: config
       ? getThemaKanaalVoorkeuren(config, contactgegevens)

@@ -118,11 +118,14 @@ type ContactgegevenValueProps = {
 export function ContactgegevenValue({
   contactgegeven,
 }: ContactgegevenValueProps) {
+  // Een klant kan meerdere e-mailadressen hebben, dus de route noemt het adres waar het om gaat.
   const getRoute = (step: '1' | '2', action: InstelAction = 'instellen') =>
     generatePath(themaConfig.detailPageContactgegevenInstellen.route.path, {
       contactgegeven: contactgegeven.type,
       step,
       action,
+      ...(contactgegeven.type === ContactgegevenTypeEnum.Email &&
+        contactgegeven.id && { id: contactgegeven.id }),
     });
 
   const hasValue = !!contactgegeven.value;

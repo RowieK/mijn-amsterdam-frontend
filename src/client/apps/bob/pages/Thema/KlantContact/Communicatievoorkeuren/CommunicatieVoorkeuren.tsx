@@ -4,8 +4,10 @@ import {
   CONTACTGEGEVENS_ANCHOR,
   ContactgegevenByTypeLabels,
 } from './CommunicatieVoorkeuren-config.ts';
+import { getEmailadressen } from './CommunicatieVoorkeuren-helpers.ts';
 import { CommunicatieVoorkeurenTabel } from './CommunicatieVoorkeurenTabel.tsx';
 import { ContactgegevenValue } from './ContactgegevenValue.tsx';
+import { EmailadressenLijst } from './EmailadressenLijst.tsx';
 import type { ZaakVoorkeurThema } from './useZaakVoorkeurThemas.ts';
 import type {
   ContactgegevenFrontend,
@@ -61,6 +63,7 @@ function getContactgegeven(
 type CommunicatieVoorkeurenProps = {
   standaardContactgegevens: ContactgegevenPerTypeFrontend | null;
   aangeslotenDiensten?: DienstSource[];
+  emailadressen?: ContactgegevenFrontend[];
   zaakKanaalVoorkeuren?: ZaakKanaalVoorkeurFrontend[];
   themaKanaalVoorkeuren?: ThemaKanaalVoorkeurFrontend[];
   zaakThemas?: ZaakVoorkeurThema[];
@@ -69,10 +72,16 @@ type CommunicatieVoorkeurenProps = {
 export function CommunicatieVoorkeuren({
   standaardContactgegevens,
   aangeslotenDiensten,
+  emailadressen,
   zaakKanaalVoorkeuren,
   themaKanaalVoorkeuren,
   zaakThemas,
 }: CommunicatieVoorkeurenProps) {
+  const alleEmailadressen = getEmailadressen(
+    standaardContactgegevens,
+    emailadressen
+  );
+
   return (
     <>
       <section id={CONTACTGEGEVENS_ANCHOR} className="ams-mb-xl">
@@ -88,9 +97,16 @@ export function CommunicatieVoorkeuren({
             <Paragraph size="small" className="ams-mb-xs">
               {uitleg}
             </Paragraph>
-            <ContactgegevenValue
-              contactgegeven={getContactgegeven(standaardContactgegevens, type)}
-            />
+            {type === 'Email' ? (
+              <EmailadressenLijst emailadressen={alleEmailadressen} />
+            ) : (
+              <ContactgegevenValue
+                contactgegeven={getContactgegeven(
+                  standaardContactgegevens,
+                  type
+                )}
+              />
+            )}
           </div>
         ))}
       </section>
@@ -109,6 +125,7 @@ export function CommunicatieVoorkeuren({
         <CommunicatieVoorkeurenTabel
           standaardContactgegevens={standaardContactgegevens}
           aangeslotenDiensten={aangeslotenDiensten}
+          emailadressen={emailadressen}
           zaakKanaalVoorkeuren={zaakKanaalVoorkeuren}
           themaKanaalVoorkeuren={themaKanaalVoorkeuren}
           zaakThemas={zaakThemas}

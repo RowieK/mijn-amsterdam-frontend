@@ -547,4 +547,182 @@ describe('useCommunicatieVoorkeuren', () => {
       expect(getZaakVoorkeurenInStore()).toEqual([voorkeurZaak123]);
     });
   });
+
+  describe('meerdere e-mailadressen', () => {
+    function createEmail(
+      id: string,
+      value: string,
+      overrides: Partial<ContactgegevenFrontend> = {}
+    ): ContactgegevenFrontend {
+      return {
+        id,
+        type: 'Email',
+        value,
+        isVerified: true,
+        dateModified: '2026-01-01T10:00:00.000Z',
+        dateModifiedFormatted: '1 januari 2026',
+        ...overrides,
+      };
+    }
+
+    function setEmailadressenInStore(emailadressen: ContactgegevenFrontend[]) {
+      useAppStateStore.setState({
+        KLANT_CONTACT: {
+          status: 'OK',
+          content: {
+            contactmomenten: [],
+            afspraken: [],
+            communicatievoorkeuren: {
+              standaardContactgegevens: { Email: emailadressen[0] },
+              emailadressen,
+              zaakKanaalVoorkeuren: [],
+            },
+          },
+        } as unknown as ApiResponse<KlantcontactResponseData>,
+      });
+    }
+
+    function getEmailadressenInStore() {
+      return useAppStateStore.getState().KLANT_CONTACT.content
+        ?.communicatievoorkeuren?.emailadressen;
+    }
+
+    it('voegt een nieuw e-mailadres toe aan de lijst en houdt het eerste adres als standaard', async () => {
+      setEmailadressenInStore([createEmail('email-1', 'eerste@example.com')]);
+      const nieuw = createEmail('email-2', 'tweede@example.com', {
+        isVerified: false,
+      });
+      bffApi.post(BFF_ENDPOINTS.create).reply(200, {
+        status: 'OK',
+        content: nieuw,
+      });
+
+      const { result } = renderHook(() => useSetCommunicatievoorkeur(vi.fn()));
+      await act(async () => {
+        await result.current.fetch({
+          payload: {
+            type: 'Email',
+            value: 'tweede@example.com',
+            toevoegen: true,
+          },
+        });
+      });
+
+      expect(getEmailadressenInStore()?.map(({ id }) => id)).toEqual([
+        'email-1',
+        'email-2',
+      ]);
+      expect(getContactgegevenInStore('Email')?.id).toBe('email-1');
+    });
+
+    it('vervangt een ongevalideerd adres met dezelfde waarde als dat opnieuw wordt aangemaakt', async () => {
+      setEmailadressenInStore([
+        createEmail('email-1', 'eerste@example.com'),
+        createEmail('email-2', 'tweede@example.com', { isVerified: false }),
+      ]);
+      bffApi.post(BFF_ENDPOINTS.create).reply(200, {
+        status: 'OK',
+        content: createEmail('email-3', 'tweede@example.com', {
+          isVerified: false,
+        }),
+      });
+
+      const { result } = renderHook(() => useSetCommunicatievoorkeur(vi.fn()));
+      await act(async () => {
+        await result.current.fetch({
+          payload: { type: 'Email', value: 'tweede@example.com' },
+        });
+      });
+
+      expect(getEmailadressenInStore()?.map(({ id }) => id)).toEqual([
+        'email-1',
+        'email-3',
+      ]);
+    });
+
+    it('markeert na het valideren alleen het gevalideerde adres als gevalideerd', async () => {
+      setEmailadressenInStore([
+        createEmail('email-1', 'eerste@example.com'),
+        createEmail('email-2', 'tweede@example.com', { isVerified: false }),
+      ]);
+      bffApi.post(BFF_ENDPOINTS.verify).reply(200, {
+        status: 'OK',
+        content: { verified: true },
+      });
+
+      const { result } = renderHook(() =>
+        useVerifyCommunicatievoorkeur(vi.fn())
+      );
+      await act(async () => {
+        await result.current.fetch({
+          payload: {
+            type: 'Email',
+            value: 'tweede@example.com',
+            code: '123456',
+          },
+        });
+      });
+
+      expect(
+        getEmailadressenInStore()?.map(({ id, isVerified }) => [id, isVerified])
+      ).toEqual([
+        // Het zojuist gevalideerde adres is het meest recent gewijzigd en staat daarom bovenaan.
+        ['email-2', true],
+        ['email-1', true],
+      ]);
+    });
+
+    it('verwijdert alleen het gekozen adres en kiest een nieuw standaardadres', async () => {
+      setEmailadressenInStore([
+        createEmail('email-1', 'eerste@example.com'),
+        createEmail('email-2', 'tweede@example.com', {
+          dateModified: '2025-01-01T10:00:00.000Z',
+        }),
+      ]);
+      bffApi.post(BFF_ENDPOINTS.delete).reply(200, {
+        status: 'OK',
+        content: null,
+      });
+
+      const { result } = renderHook(() =>
+        useCommunicatieVoorkeurVerwijderen(
+          createEmail('email-1', 'eerste@example.com')
+        )
+      );
+      await act(async () => {
+        await result.current();
+      });
+
+      expect(getEmailadressenInStore()?.map(({ id }) => id)).toEqual([
+        'email-2',
+      ]);
+      expect(getContactgegevenInStore('Email')?.id).toBe('email-2');
+    });
+
+    it('laat de lijst ongemoeid als het verwijderen mislukt', async () => {
+      setEmailadressenInStore([
+        createEmail('email-1', 'eerste@example.com'),
+        createEmail('email-2', 'tweede@example.com'),
+      ]);
+      bffApi.post(BFF_ENDPOINTS.delete).reply(500, {
+        status: 'ERROR',
+        message: 'Delete failed',
+        content: null,
+      });
+
+      const { result } = renderHook(() =>
+        useCommunicatieVoorkeurVerwijderen(
+          createEmail('email-2', 'tweede@example.com')
+        )
+      );
+      await act(async () => {
+        await result.current();
+      });
+
+      expect(getEmailadressenInStore()?.map(({ id }) => id)).toEqual([
+        'email-1',
+        'email-2',
+      ]);
+    });
+  });
 });

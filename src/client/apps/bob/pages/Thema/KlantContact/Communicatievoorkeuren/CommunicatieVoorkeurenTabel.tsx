@@ -11,6 +11,7 @@ import type { ZaakVoorkeurThema } from './useZaakVoorkeurThemas.ts';
 import { ZaakKanaalVoorkeur } from './ZaakKanaalVoorkeur.tsx';
 import type {
   ContactgegevenPerTypeFrontend,
+  ContactgegevenFrontend,
   DienstSource,
   ThemaKanaalVoorkeurFrontend,
   ZaakKanaalVoorkeurFrontend,
@@ -27,6 +28,7 @@ const STANDAARD = 'standaard';
 type CommunicatieVoorkeurenTabelProps = {
   standaardContactgegevens: ContactgegevenPerTypeFrontend | null;
   aangeslotenDiensten?: DienstSource[];
+  emailadressen?: ContactgegevenFrontend[];
   zaakKanaalVoorkeuren?: ZaakKanaalVoorkeurFrontend[];
   themaKanaalVoorkeuren?: ThemaKanaalVoorkeurFrontend[];
   zaakThemas?: ZaakVoorkeurThema[];
@@ -52,6 +54,7 @@ function ColumnHeader({
 export function CommunicatieVoorkeurenTabel({
   standaardContactgegevens,
   aangeslotenDiensten = [],
+  emailadressen,
   zaakKanaalVoorkeuren = [],
   themaKanaalVoorkeuren = [],
   zaakThemas = [],
@@ -143,6 +146,7 @@ export function CommunicatieVoorkeurenTabel({
                         themaId={thema.id}
                         themaTitel={thema.title}
                         standaardContactgegevens={standaardContactgegevens}
+                        emailadressen={emailadressen}
                         voorkeur={themaVoorkeur}
                       />
                       {thema.zaken.map((zaak) => (
@@ -151,6 +155,7 @@ export function CommunicatieVoorkeurenTabel({
                           zaakIdentificatie={zaak.zaakIdentificatie}
                           omschrijving={zaak.omschrijving}
                           standaardContactgegevens={standaardContactgegevens}
+                          emailadressen={emailadressen}
                           themaVoorkeur={themaVoorkeur}
                           voorkeur={zaakKanaalVoorkeuren.find(
                             (voorkeur) =>

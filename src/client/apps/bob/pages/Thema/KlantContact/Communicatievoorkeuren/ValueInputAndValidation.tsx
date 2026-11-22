@@ -25,6 +25,7 @@ import {
 } from './useCommunicatieVoorkeuren.ts';
 import styles from './ValueInputAndValidation.module.scss';
 import { type ContactgegevenType } from '../../../../../../../server/services/klantcontact/klantcontact-profieldienst-types.ts';
+import { isValidEmail } from '../../../../../../../universal/helpers/email.ts';
 import { Spinner } from '../../../../../../components/Spinner/Spinner.tsx';
 
 const VERIFICATION_CODE_LENGTH = 6;
@@ -131,6 +132,7 @@ type ValueInputProps = {
   value: string;
   type: ContactgegevenType;
   isInvalid: boolean;
+  isDuplicate?: boolean;
   isError: boolean;
   isLoading: boolean;
   onChange: ChangeEventHandler<HTMLInputElement>;
@@ -141,12 +143,13 @@ function ValueInput({
   type,
   onChange,
   isInvalid = false,
+  isDuplicate = false,
   isError = false,
   isLoading = false,
 }: ValueInputProps) {
   const typeLabel = ContactgegevenByTypeLabels[type];
   return (
-    <Field invalid={isInvalid} className="ams-mb-m">
+    <Field invalid={isInvalid || isDuplicate} className="ams-mb-m">
       <Paragraph id="description2">
         Zorg ervoor dat u een geldig {typeLabel} invult. U ontvangt een code op
         dit {typeLabel}. De code moet u straks invullen.
@@ -156,16 +159,21 @@ function ValueInput({
           Dit lijkt geen valide {typeLabel}.
         </ErrorMessage>
       )}
+      {isDuplicate && (
+        <ErrorMessage id="error4">
+          Dit {typeLabel} heeft u al toegevoegd.
+        </ErrorMessage>
+      )}
       {isError && (
         <ErrorMessage id="error3">
           Het {typeLabel} kan nu niet geverifieerd worden.
         </ErrorMessage>
       )}
       <TextInput
-        aria-describedby="description2 error2 error3"
+        aria-describedby="description2 error2 error3 error4"
         aria-required
         id="input3"
-        invalid={isInvalid}
+        invalid={isInvalid || isDuplicate}
         size={26}
         value={value}
         placeholder={`Vul hier uw ${typeLabel} in`}
@@ -181,16 +189,23 @@ function ValueInput({
 type ContactgegevenProps<V = string, T = ContactgegevenType> = {
   value: V;
   type: T;
+  // Een extra adres toevoegen aan de adressen die de klant al heeft, in plaats van een adres te valideren of wijzigen.
+  toevoegen?: boolean;
+  // De adressen die de klant al heeft, om een dubbel adres te melden voordat er iets verstuurd wordt.
+  bestaandeWaarden?: string[];
   onCallback: (formData: { value: V; type: T }, success: boolean) => void;
 };
 
 export function ContactgegevenForm({
   value,
   type,
+  toevoegen = false,
+  bestaandeWaarden = [],
   onCallback,
 }: ContactgegevenProps) {
   const [valueToVerify, setValueToVerify] = useState<string>(value);
   const [isInvalid, setIsInvalid] = useState(false);
+  const [isDuplicate, setIsDuplicate] = useState(false);
 
   useEffect(() => {
     setValueToVerify(value);
@@ -211,7 +226,7 @@ export function ContactgegevenForm({
 
       const isInvalidEmail =
         type === ContactgegevenTypeEnum.Email &&
-        !valueToVerify.includes('@');
+        !isValidEmail(valueToVerify.trim());
 
       const isInvalidPhone =
         type === ContactgegevenTypeEnum.Telefoonnummer &&
@@ -222,10 +237,28 @@ export function ContactgegevenForm({
         return;
       }
 
+      const isDubbel =
+        toevoegen &&
+        bestaandeWaarden.some(
+          (bestaand) =>
+            bestaand.trim().toLowerCase() === valueToVerify.trim().toLowerCase()
+        );
+
+      if (isDubbel) {
+        setIsDuplicate(true);
+        return;
+      }
+
       setValueToVerify(valueToVerify);
-      fetch({ payload: { type, value: valueToVerify } });
+      fetch({
+        payload: {
+          type,
+          value: valueToVerify,
+          ...(toevoegen && { toevoegen: true }),
+        },
+      });
     },
-    [valueToVerify, type, fetch]
+    [valueToVerify, type, toevoegen, bestaandeWaarden, fetch]
   );
 
   return (
@@ -235,11 +268,13 @@ export function ContactgegevenForm({
           value={valueToVerify}
           type={type}
           isInvalid={isInvalid}
+          isDuplicate={isDuplicate}
           isError={isError}
           isLoading={isLoading}
           onChange={(e) => {
             setValueToVerify(e.target.value);
             setIsInvalid(false);
+            setIsDuplicate(false);
           }}
         />
       </Field>

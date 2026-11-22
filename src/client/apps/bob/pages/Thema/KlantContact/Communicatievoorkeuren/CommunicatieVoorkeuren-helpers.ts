@@ -21,13 +21,21 @@ export type VerifiedZaakKanaal = ContactgegevenFrontend & {
 // De kanalen die de BFF per zaak toestaat (klantcontactConfig.zaakVoorkeur.kanalen) en waarvoor de klant
 // een gevalideerd standaardadres heeft: de BFF weigert een zaakvoorkeur voor een ongevalideerd adres.
 export function getVerifiedZaakKanalen(
-  standaardContactgegevens: ContactgegevenPerTypeFrontend | null
+  standaardContactgegevens: ContactgegevenPerTypeFrontend | null,
+  emailadressen?: ContactgegevenFrontend[]
 ): VerifiedZaakKanaal[] {
   return (Object.keys(ZAAK_KANAAL_LABELS) as ZaakKanaal[]).flatMap((type) => {
-    const contactgegeven = standaardContactgegevens?.[type];
-    return contactgegeven?.isVerified && contactgegeven.value
-      ? [{ ...contactgegeven, type, value: contactgegeven.value }]
-      : [];
+    // Van e-mail kan de klant meerdere adressen hebben, van een telefoonnummer één.
+    const contactgegevens =
+      type === 'Email'
+        ? getEmailadressen(standaardContactgegevens, emailadressen)
+        : [standaardContactgegevens?.[type]];
+
+    return contactgegevens.flatMap((contactgegeven) =>
+      contactgegeven?.isVerified && contactgegeven.value
+        ? [{ ...contactgegeven, type, value: contactgegeven.value }]
+        : []
+    );
   });
 }
 
@@ -40,6 +48,15 @@ function normalizeWaarde(
     return value;
   }
   return value.replace(/[\s()-]/g, '').replace(/^(\+31|0031)/, '0');
+}
+
+// De sleutel waaronder een kanaal in een keuzelijst staat. Een klant kan meerdere e-mailadressen hebben,
+// dus het type alleen is niet genoeg.
+export function getKanaalSleutel({
+  type,
+  value,
+}: Pick<VerifiedZaakKanaal, 'type' | 'value'>): string {
+  return `${type}:${value}`;
 }
 
 // Een zaak- of themakeuze is een eigen adres met dezelfde waarde als een standaardadres. Het id verschilt dus,
@@ -90,6 +107,59 @@ export type ZaakThemaNotificaties = {
   // De gekozen kanalen van de zaken met een eigen voorkeur, zonder dubbelen.
   kanalen: string[];
 };
+
+// Gevalideerde adressen eerst, daarna de meest recent gewijzigde. Hetzelfde adres in een andere schrijfwijze
+// (hoofdletters) telt één keer, zoals de BFF dat ook doet.
+export function sorteerEmailadressen(
+  emailadressen: ContactgegevenFrontend[]
+): ContactgegevenFrontend[] {
+  const gezien = new Set<string>();
+
+  return emailadressen
+    .filter((adres) => !!adres.value)
+    .toSorted((a, b) =>
+      String(b.dateModified).localeCompare(String(a.dateModified))
+    )
+    .toSorted((a, b) => Number(!!b.isVerified) - Number(!!a.isVerified))
+    .filter((adres) => {
+      const sleutel = (adres.value ?? '').trim().toLowerCase();
+      if (gezien.has(sleutel)) {
+        return false;
+      }
+      gezien.add(sleutel);
+      return true;
+    });
+}
+
+export const LEEG_EMAILADRES: ContactgegevenFrontend = {
+  id: null,
+  type: 'Email',
+  value: null,
+  isVerified: false,
+  dateModified: null,
+  dateModifiedFormatted: null,
+};
+
+// Het eerste adres is het standaardadres. Zonder adressen is dat een leeg adres.
+export function getStandaardEmailadres(
+  emailadressen: ContactgegevenFrontend[]
+): ContactgegevenFrontend {
+  return sorteerEmailadressen(emailadressen)[0] ?? LEEG_EMAILADRES;
+}
+
+// De BFF geeft alle adressen in `emailadressen`. Ontbreekt die lijst (een oudere response), dan is het
+// standaardadres het enige adres.
+export function getEmailadressen(
+  standaardContactgegevens: ContactgegevenPerTypeFrontend | null,
+  emailadressen?: ContactgegevenFrontend[]
+): ContactgegevenFrontend[] {
+  if (emailadressen) {
+    return sorteerEmailadressen(emailadressen);
+  }
+
+  const standaard = standaardContactgegevens?.Email;
+  return standaard?.value ? [standaard] : [];
+}
 
 // Per zaak geldt de keuze voor de zaak zelf, anders de keuze voor het thema, anders de standaardinstelling.
 export function getZaakThemaNotificaties(

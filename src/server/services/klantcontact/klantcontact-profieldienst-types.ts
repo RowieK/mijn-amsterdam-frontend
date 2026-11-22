@@ -123,6 +123,8 @@ export type CommunicatievoorkeurenResponseFrontend = {
   standaardContactgegevens: ContactgegevenPerTypeFrontend | null;
   zaakKanaalVoorkeuren: ZaakKanaalVoorkeurFrontend[];
   themaKanaalVoorkeuren?: ThemaKanaalVoorkeurFrontend[];
+  // Alle eigen e-mailadressen. standaardContactgegevens.Email is daar het eerste van.
+  emailadressen?: ContactgegevenFrontend[];
   aangeslotenDiensten?: DienstSource[];
 };
 

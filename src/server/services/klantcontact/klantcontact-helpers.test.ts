@@ -1,8 +1,10 @@
 import type { GemeenteKlantcontactConfig } from './klantcontact-backend-types.ts';
 import {
+  getAllByContactgegevenType,
   getMostRecentByContactgegevenType,
   getValidZaakReferentie,
   getZaakKanaalVoorkeuren,
+  isValidEmail,
   isValidZaakReferentie,
   zaakIdentificatieAlsReferentie,
 } from './klantcontact-helpers.ts';
@@ -228,6 +230,99 @@ describe('klantcontact-helpers', () => {
       expect(getZaakKanaalVoorkeuren(apiErrorResult('Mislukt', null))).toEqual(
         []
       );
+    });
+  });
+
+  describe('isValidEmail', () => {
+    test.each(['mokum@example.org', 'a.b+c@sub.example.nl'])(
+      '%s is geldig',
+      (value) => {
+        expect(isValidEmail(value)).toBe(true);
+      }
+    );
+
+    test.each([
+      '',
+      'geen-apenstaart',
+      'a@b',
+      '@example.org',
+      'a b@example.org',
+      'a@@example.org',
+      `${'a'.repeat(250)}@example.org`,
+    ])('%s is ongeldig', (value) => {
+      expect(isValidEmail(value)).toBe(false);
+    });
+  });
+
+  describe('getAllByContactgegevenType', () => {
+    test('geeft alle eigen e-mailadressen, gevalideerde eerst en daarna de meest recente', () => {
+      const result = getAllByContactgegevenType(
+        apiSuccessResult([
+          getContactgegeven({
+            id: 'oud',
+            waarde: 'oud@example.org',
+            lastUpdated: '2025-01-01T10:00:00Z',
+          }),
+          getContactgegeven({
+            id: 'nieuw-ongevalideerd',
+            waarde: 'nieuw@example.org',
+            isGeverifieerd: false,
+            lastUpdated: '2025-03-01T10:00:00Z',
+          }),
+          getContactgegeven({
+            id: 'recent',
+            waarde: 'recent@example.org',
+            lastUpdated: '2025-02-01T10:00:00Z',
+          }),
+        ]),
+        'Email'
+      );
+
+      expect(result.map(({ id }) => id)).toEqual([
+        'recent',
+        'oud',
+        'nieuw-ongevalideerd',
+      ]);
+      expect(result[0]).toMatchObject({
+        type: 'Email',
+        value: 'recent@example.org',
+        isVerified: true,
+      });
+    });
+
+    test('slaat zaakadressen, andere types en een mislukt profiel over', () => {
+      const bron = apiSuccessResult([
+        getContactgegeven({ id: '1' }),
+        getContactgegeven({ id: '2', referentie: 'Z-24-1', isDefault: false }),
+        getContactgegeven({
+          id: '3',
+          type: 'Telefoonnummer',
+          waarde: '0612345678',
+        }),
+      ]);
+
+      expect(
+        getAllByContactgegevenType(bron, 'Email').map(({ id }) => id)
+      ).toEqual(['1']);
+      expect(
+        getAllByContactgegevenType(apiErrorResult('fout', null), 'Email')
+      ).toEqual([]);
+    });
+
+    test('telt hetzelfde adres in een andere schrijfwijze één keer en houdt de gevalideerde', () => {
+      const result = getAllByContactgegevenType(
+        apiSuccessResult([
+          getContactgegeven({
+            id: 'ongevalideerd',
+            waarde: 'Mokum@Example.org',
+            isGeverifieerd: false,
+          }),
+          getContactgegeven({ id: 'gevalideerd', waarde: 'mokum@example.org' }),
+        ]),
+        'Email'
+      );
+
+      expect(result.map(({ id }) => id)).toEqual(['gevalideerd']);
     });
   });
 });

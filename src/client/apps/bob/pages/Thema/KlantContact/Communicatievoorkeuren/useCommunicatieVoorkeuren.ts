@@ -1,6 +1,11 @@
 import { useParams } from 'react-router';
 
 import { ContactgegevenByTypeLabels } from './CommunicatieVoorkeuren-config.ts';
+import {
+  getEmailadressen,
+  getStandaardEmailadres,
+  sorteerEmailadressen,
+} from './CommunicatieVoorkeuren-helpers.ts';
 import type {
   ContactgegevenType,
   ContactgegevenFrontend,
@@ -34,6 +39,53 @@ type UpdateProps = {
   };
   appState: AppStateStore;
 };
+
+// Van e-mail kan de klant meerdere adressen hebben. De lijst wordt vervangen (mergeAppState voegt arrays per
+// index samen) en het standaardadres blijft het eerste adres van de lijst. De store wordt hier direct gelezen:
+// na een request is de render-snapshot van de hook verouderd.
+function updateEmailadressenState(
+  update: (huidige: ContactgegevenFrontend[]) => ContactgegevenFrontend[]
+) {
+  const { KLANT_CONTACT, setAppState } = useAppStateStore.getState();
+  const communicatievoorkeuren = KLANT_CONTACT.content?.communicatievoorkeuren;
+
+  if (!KLANT_CONTACT.content || !communicatievoorkeuren) {
+    return;
+  }
+
+  const emailadressen = sorteerEmailadressen(
+    update(
+      getEmailadressen(
+        communicatievoorkeuren.standaardContactgegevens,
+        communicatievoorkeuren.emailadressen
+      )
+    )
+  );
+
+  setAppState({
+    KLANT_CONTACT: {
+      ...KLANT_CONTACT,
+      content: {
+        ...KLANT_CONTACT.content,
+        communicatievoorkeuren: {
+          ...communicatievoorkeuren,
+          emailadressen,
+          standaardContactgegevens:
+            communicatievoorkeuren.standaardContactgegevens
+              ? {
+                  ...communicatievoorkeuren.standaardContactgegevens,
+                  Email: getStandaardEmailadres(emailadressen),
+                }
+              : null,
+        },
+      },
+    },
+  });
+}
+
+function isZelfdeEmailadres(a: string | null, b: string | null) {
+  return !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
+}
 
 function updateCommunicatievoorkeurState({
   contactgegeven,
@@ -123,11 +175,27 @@ export function useSetCommunicatievoorkeur(
       sendRequest: async (url, init) => {
         return sendFormPostRequest<ContactgegevenFrontend>(url, init).then(
           (response) => {
-            if (response.content?.id) {
-              updateCommunicatievoorkeurState({
-                contactgegeven: response.content,
-                appState,
-              });
+            const created = response.content;
+            if (created?.id) {
+              if (created.type === 'Email') {
+                updateEmailadressenState((huidige) => [
+                  ...huidige.filter(
+                    (adres) =>
+                      adres.id !== created.id &&
+                      // Opnieuw valideren maakt een nieuw record met dezelfde waarde aan.
+                      !(
+                        !adres.isVerified &&
+                        isZelfdeEmailadres(adres.value, created.value)
+                      )
+                  ),
+                  created,
+                ]);
+              } else {
+                updateCommunicatievoorkeurState({
+                  contactgegeven: created,
+                  appState,
+                });
+              }
             }
             onCallback(response.content ?? null, response.status === 'OK');
             return response;
@@ -253,19 +321,49 @@ export function useVerifyCommunicatievoorkeur(
       ).then((response) => {
         const success = response.content?.verified ?? false;
         if (success && init?.payload) {
-          updateCommunicatievoorkeurState({
-            contactgegeven: {
-              type: init.payload.type,
-              isVerified: true,
-              dateModified: new Date().toISOString(),
-              dateModifiedFormatted: new Date().toLocaleDateString('nl-NL', {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric',
-              }),
-            },
-            appState,
+          const dateModified = new Date().toISOString();
+          const dateModifiedFormatted = new Date().toLocaleDateString('nl-NL', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
           });
+
+          const waarde = init.payload.value ?? null;
+          const { KLANT_CONTACT } = useAppStateStore.getState();
+          const communicatievoorkeuren =
+            KLANT_CONTACT.content?.communicatievoorkeuren;
+          const isBekendEmailadres =
+            init.payload.type === 'Email' &&
+            getEmailadressen(
+              communicatievoorkeuren?.standaardContactgegevens ?? null,
+              communicatievoorkeuren?.emailadressen
+            ).some((adres) => isZelfdeEmailadres(adres.value, waarde));
+
+          if (isBekendEmailadres) {
+            // Alleen het adres dat net is gevalideerd, niet de andere adressen van de klant.
+            updateEmailadressenState((huidige) =>
+              huidige.map((adres) =>
+                isZelfdeEmailadres(adres.value, waarde)
+                  ? {
+                      ...adres,
+                      isVerified: true,
+                      dateModified,
+                      dateModifiedFormatted,
+                    }
+                  : adres
+              )
+            );
+          } else {
+            updateCommunicatievoorkeurState({
+              contactgegeven: {
+                type: init.payload.type,
+                isVerified: true,
+                dateModified,
+                dateModifiedFormatted,
+              },
+              appState,
+            });
+          }
         }
         onCallback(success);
         return response;
@@ -288,17 +386,23 @@ export function useCommunicatieVoorkeurVerwijderen(
       }
     ).then((response) => {
       if (response.status === 'OK') {
-        updateCommunicatievoorkeurState({
-          contactgegeven: {
-            type: contactgegeven.type,
-            value: null,
-            id: null,
-            dateModified: null,
-            dateModifiedFormatted: null,
-            isVerified: false,
-          },
-          appState,
-        });
+        if (contactgegeven.type === 'Email') {
+          updateEmailadressenState((huidige) =>
+            huidige.filter((adres) => adres.id !== contactgegeven.id)
+          );
+        } else {
+          updateCommunicatievoorkeurState({
+            contactgegeven: {
+              type: contactgegeven.type,
+              value: null,
+              id: null,
+              dateModified: null,
+              dateModifiedFormatted: null,
+              isVerified: false,
+            },
+            appState,
+          });
+        }
       }
       return response;
     });
@@ -315,5 +419,6 @@ export function useCommunicatieVoorkeurInstellen() {
     title: `${params.action ? capitalizeFirstLetter(params.action) : 'Instellen'} ${params.contactgegeven ? lowercaseFirstLetter(ContactgegevenByTypeLabels[params.contactgegeven] ?? '') : 'contactgegeven'}`,
     routeConfig: themaConfig.detailPageContactgegevenInstellen.route,
     contactgegevenType: params.contactgegeven,
+    contactgegevenId: params.id,
   };
 }

@@ -12,6 +12,7 @@ import {
 import {
   findKanaalVoorContactgegeven,
   formatZaakKanaal,
+  getKanaalSleutel,
   getVerifiedZaakKanalen,
 } from './CommunicatieVoorkeuren-helpers.ts';
 import {
@@ -19,9 +20,9 @@ import {
   useVerwijderZaakKanaalVoorkeur,
 } from './useCommunicatieVoorkeuren.ts';
 import type {
+  ContactgegevenFrontend,
   ContactgegevenPerTypeFrontend,
   ThemaKanaalVoorkeurFrontend,
-  ZaakKanaal,
   ZaakKanaalVoorkeurFrontend,
 } from '../../../../../../../server/services/klantcontact/klantcontact-profieldienst-types.ts';
 import { bepaalEffectieveVoorkeur } from '../../../../../../../server/services/klantcontact/klantcontact-thema-voorkeur.ts';
@@ -29,12 +30,14 @@ import { Spinner } from '../../../../../../components/Spinner/Spinner.tsx';
 
 const STANDAARD = 'standaard';
 
-type Keuze = typeof STANDAARD | ZaakKanaal;
+// De waarde `standaard`, of de sleutel van een kanaal (getKanaalSleutel).
+type Keuze = string;
 
 type ZaakKanaalVoorkeurProps = {
   zaakIdentificatie: string;
   omschrijving?: string;
   standaardContactgegevens: ContactgegevenPerTypeFrontend | null;
+  emailadressen?: ContactgegevenFrontend[];
   voorkeur?: ZaakKanaalVoorkeurFrontend;
   // De keuze voor het hele thema. De keuze voor de zaak zelf gaat voor.
   themaVoorkeur?: ThemaKanaalVoorkeurFrontend;
@@ -44,18 +47,24 @@ export function ZaakKanaalVoorkeur({
   zaakIdentificatie,
   omschrijving,
   standaardContactgegevens,
+  emailadressen,
   voorkeur,
   themaVoorkeur,
 }: ZaakKanaalVoorkeurProps) {
-  const kanalen = getVerifiedZaakKanalen(standaardContactgegevens);
+  const kanalen = getVerifiedZaakKanalen(
+    standaardContactgegevens,
+    emailadressen
+  );
   const effectief = bepaalEffectieveVoorkeur(voorkeur, themaVoorkeur);
 
   // De voorkeur van de zaak is een eigen adres met dezelfde waarde als een standaardadres. Het id verschilt dus,
   // daarom wordt op kanaal en waarde vergeleken.
-  const huidigeKeuze: Keuze | null = voorkeur
-    ? (findKanaalVoorContactgegeven(kanalen, voorkeur.contactgegeven)?.type ??
-      null)
-    : STANDAARD;
+  const huidigKanaal = voorkeur
+    ? findKanaalVoorContactgegeven(kanalen, voorkeur.contactgegeven)
+    : undefined;
+  const huidigeKeuze: Keuze | null = !voorkeur
+    ? STANDAARD
+    : ((huidigKanaal && getKanaalSleutel(huidigKanaal)) ?? null);
 
   const [keuze, setKeuze] = useState<Keuze | null>(huidigeKeuze);
   const [isSaved, setIsSaved] = useState(false);
@@ -92,7 +101,7 @@ export function ZaakKanaalVoorkeur({
       return;
     }
 
-    const kanaal = kanalen.find(({ type }) => type === keuze);
+    const kanaal = kanalen.find((k) => getKanaalSleutel(k) === keuze);
 
     if (kanaal) {
       setVoorkeur({
@@ -140,13 +149,13 @@ export function ZaakKanaalVoorkeur({
           </Radio>
         </Field>
         {kanalen.map((kanaal) => (
-          <Field key={kanaal.type}>
+          <Field key={getKanaalSleutel(kanaal)}>
             <Radio
               name={name}
-              value={kanaal.type}
-              checked={keuze === kanaal.type}
+              value={getKanaalSleutel(kanaal)}
+              checked={keuze === getKanaalSleutel(kanaal)}
               onChange={() => {
-                setKeuze(kanaal.type);
+                setKeuze(getKanaalSleutel(kanaal));
                 setIsSaved(false);
               }}
             >

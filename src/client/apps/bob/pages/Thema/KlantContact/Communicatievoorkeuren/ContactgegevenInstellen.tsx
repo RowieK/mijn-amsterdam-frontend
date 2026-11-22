@@ -1,6 +1,13 @@
 import { generatePath, useNavigate, useParams } from 'react-router';
 
-import { useCommunicatieVoorkeurInstellen } from './useCommunicatieVoorkeuren.ts';
+import {
+  getEmailadressen,
+  LEEG_EMAILADRES,
+} from './CommunicatieVoorkeuren-helpers.ts';
+import {
+  useCommunicatieVoorkeurInstellen,
+  useCommunicatieVoorkeurVerwijderen,
+} from './useCommunicatieVoorkeuren.ts';
 import {
   ContactgegevenForm,
   ContactgegevenVerify,
@@ -18,7 +25,7 @@ export function ContactgegevenInstellen() {
   const navigate = useNavigate();
   const { themaConfig, breadcrumbs, communicatievoorkeuren } =
     useKlantcontactData();
-  const { contactgegevenType, title, routeConfig } =
+  const { contactgegevenType, contactgegevenId, title, routeConfig } =
     useCommunicatieVoorkeurInstellen();
 
   useHTMLDocumentTitle(routeConfig);
@@ -28,9 +35,30 @@ export function ContactgegevenInstellen() {
     action: InstelAction;
   }>();
 
+  // Elk adres en elke toevoegactie heeft zijn eigen bewaarde waarde, zodat een afgebroken actie een andere niet
+  // overschrijft. De gewone actie houdt de oorspronkelijke sleutel.
+  let sleutelSuffix = '';
+  if (contactgegevenId) {
+    sleutelSuffix = `-${contactgegevenId}`;
+  } else if (action === 'toevoegen') {
+    sleutelSuffix = '-toevoegen';
+  }
   const [valueLocal, setValueLocal] = useSessionStorage(
-    `standaard-${contactgegevenType}-voorkeur-instellen`,
+    `standaard-${contactgegevenType}-voorkeur-instellen${sleutelSuffix}`,
     ''
+  );
+
+  const emailadressen = getEmailadressen(
+    communicatievoorkeuren?.standaardContactgegevens ?? null,
+    communicatievoorkeuren?.emailadressen
+  );
+  // Bij wijzigen wordt het oude adres vervangen: na het valideren van het nieuwe adres verwijderen we het oude.
+  const oudAdres =
+    action === 'wijzigen' && contactgegevenId
+      ? emailadressen.find((adres) => adres.id === contactgegevenId)
+      : undefined;
+  const verwijderOudAdres = useCommunicatieVoorkeurVerwijderen(
+    oudAdres ?? LEEG_EMAILADRES
   );
 
   if (
@@ -40,9 +68,21 @@ export function ContactgegevenInstellen() {
     return <NotFound />;
   }
 
-  const currentValue =
-    communicatievoorkeuren?.standaardContactgegevens?.[contactgegevenType]
-      ?.value;
+  const getCurrentValue = () => {
+    if (action === 'toevoegen') {
+      return '';
+    }
+
+    if (contactgegevenType === 'Email' && contactgegevenId) {
+      return emailadressen.find((adres) => adres.id === contactgegevenId)
+        ?.value;
+    }
+
+    return communicatievoorkeuren?.standaardContactgegevens?.[
+      contactgegevenType
+    ]?.value;
+  };
+  const currentValue = getCurrentValue();
 
   function navigateToStep(step: '1' | '2') {
     navigate(
@@ -50,6 +90,7 @@ export function ContactgegevenInstellen() {
         step,
         contactgegeven: contactgegevenType,
         action,
+        ...(contactgegevenId && { id: contactgegevenId }),
       })
     );
   }
@@ -69,6 +110,10 @@ export function ContactgegevenInstellen() {
               <ContactgegevenForm
                 value={valueLocal || currentValue || ''}
                 type={contactgegevenType}
+                toevoegen={action === 'toevoegen'}
+                bestaandeWaarden={emailadressen.flatMap(({ value }) =>
+                  value ? [value] : []
+                )}
                 onCallback={({ type, value }, success) => {
                   setValueLocal(value ?? ''); // If we reload the page after setting the email in session storage, we can prefill the email field with the previously entered value.
                   if (success) {
@@ -81,7 +126,21 @@ export function ContactgegevenInstellen() {
               <ContactgegevenVerify
                 value={valueLocal}
                 type={contactgegevenType}
-                onVerified={({ otp, value, type }) => {
+                onVerified={async ({ value }) => {
+                  const isAnderAdres =
+                    !!oudAdres &&
+                    oudAdres.value?.trim().toLowerCase() !==
+                      value.trim().toLowerCase();
+
+                  if (isAnderAdres) {
+                    // Mislukt het opruimen, dan blijft het oude adres gewoon staan en kan de klant het zelf
+                    // verwijderen. Het nieuwe adres is dan al gevalideerd.
+                    try {
+                      await verwijderOudAdres();
+                    } catch {
+                      // Bewust genegeerd: de klant gaat gewoon door naar het overzicht.
+                    }
+                  }
                   setValueLocal('');
                   navigate(themaConfig.route.path);
                 }}
