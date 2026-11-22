@@ -119,6 +119,71 @@ describe('ContactgegevenInstellen integration', () => {
     ).toBeInTheDocument();
   });
 
+  it('updates the default SMS channel without zaken', async () => {
+    const user = userEvent.setup();
+    const oldNumber = '0612345678';
+    const newNumber = '0687654321';
+    const code = '123456';
+    const { mergeAppState } = useAppStateStore.getState();
+    mergeAppState('ERFPACHT', {
+      status: 'OK',
+      content: { dossiers: { dossiers: [] }, zaken: [] },
+    });
+    mergeAppState('KLANT_CONTACT', {
+      content: {
+        communicatievoorkeuren: {
+          standaardContactgegevens: {
+            Telefoonnummer: {
+              id: 'telefoon-1',
+              type: 'Telefoonnummer',
+              value: oldNumber,
+              isVerified: true,
+            },
+          },
+        },
+      },
+    });
+
+    const contactgegeven = { type: 'Telefoonnummer', value: newNumber };
+    bffApi
+      .post('/services/klantcontact/contactgegeven/create', contactgegeven)
+      .reply(200, {
+        status: 'OK',
+        content: { ...contactgegeven, id: 'telefoon-2', isVerified: false },
+      });
+    bffApi
+      .post('/services/klantcontact/contactgegeven/verify', {
+        ...contactgegeven,
+        code,
+      })
+      .reply(200, { status: 'OK', content: { verified: true } });
+
+    renderWithRoute(
+      generatePath(themaConfig.detailPageContactgegevenInstellen.route.path, {
+        contactgegeven: 'Telefoonnummer',
+        step: '1',
+        action: 'wijzigen',
+      })
+    );
+
+    const input = screen.getByRole('textbox');
+    expect(input).toHaveValue(oldNumber);
+    await user.clear(input);
+    await user.type(input, newNumber);
+    await user.click(screen.getByRole('button', { name: 'Versturen' }));
+
+    await screen.findByText('Vul de code in');
+    for (const [index, field] of screen.getAllByRole('textbox').entries()) {
+      await user.type(field, code.charAt(index));
+    }
+
+    expect(await screen.findByText('KlantContact Home')).toBeInTheDocument();
+    expect(
+      useAppStateStore.getState().KLANT_CONTACT.content?.communicatievoorkeuren
+        ?.standaardContactgegevens?.Telefoonnummer
+    ).toMatchObject({ value: newNumber, isVerified: true });
+  });
+
   it('shows validation error for invalid email and stays on step 1', async () => {
     const user = userEvent.setup();
     const routeEntry = generatePath(
