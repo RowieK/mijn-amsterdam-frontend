@@ -101,7 +101,7 @@ export const routes: MockRouteDefinition[] = [
     handler: {
       type: 'middleware',
       middleware: (req, res) => {
-        const { type, waarde, isDefault, referentie } = req.body ?? {};
+        const { type, waarde, isDefault, referentie, scope } = req.body ?? {};
 
         if (!type || !waarde) {
           return res.status(400).send({ message: 'type en waarde zijn nodig' });
@@ -121,7 +121,21 @@ export const routes: MockRouteDefinition[] = [
           referentie: referentie ?? null,
           createdAt: nu,
           lastUpdated: nu,
-          scopes: [],
+          // Een scope (themakeuze) komt terug als scopes, zoals de echte service doet.
+          scopes: scope?.dienstNaam
+            ? [
+                {
+                  partij: {
+                    identificatieType: 'mock',
+                    identificatieNummer: '0',
+                  },
+                  dienst: {
+                    id: scope.dienstNaam,
+                    beschrijving: scope.dienstNaam,
+                  },
+                },
+              ]
+            : [],
         };
         contactgegevens.push(nieuw);
 
@@ -156,8 +170,7 @@ export const routes: MockRouteDefinition[] = [
       middleware: (req, res) => {
         const { email, verificatieCode } = req.body ?? {};
 
-        return verificatieCode === VERIFICATIE_CODE &&
-          verifieer('Email', email)
+        return verificatieCode === VERIFICATIE_CODE && verifieer('Email', email)
           ? res.status(200).send({})
           : res.status(400).send({ message: 'Onjuiste of verlopen code' });
       },

@@ -9,11 +9,13 @@ import {
 import {
   ContactgegevenTypes,
   ContactgegevenTypeValues,
+  deleteThemaKanaalVoorkeur,
   deleteZaakKanaalVoorkeur,
   fetchCommunicatievoorkeuren,
+  setThemaKanaalVoorkeur,
   setZaakKanaalVoorkeur,
 } from './klantcontact-communicatievoorkeuren.ts';
-import { getValidZaakReferentie } from './klantcontact-helpers.ts';
+import { getThemaId, getValidZaakReferentie } from './klantcontact-helpers.ts';
 import { normalizeDutchMobileNumber } from './klantcontact-profieldienst.ts';
 import { apiErrorResult } from '../../../universal/helpers/api.ts';
 import {
@@ -82,7 +84,8 @@ export async function handleFetchCommunicatievoorkeuren(
 ) {
   const communicatievoorkeurenResponse = await fetchCommunicatievoorkeuren(
     res.locals.authProfileAndToken,
-    klantcontactBackend
+    klantcontactBackend,
+    klantcontactConfig
   );
 
   return sendResponse(res, communicatievoorkeurenResponse);
@@ -251,6 +254,96 @@ export async function handleDeleteZaakKanaalVoorkeur(
     klantcontactBackend,
     klantcontactConfig,
     zaakIdentificatie
+  );
+
+  return sendResponse(res, response);
+}
+
+function isThemaBekend(themaId: unknown): themaId is string {
+  const themaVoorkeur = klantcontactConfig.themaVoorkeur;
+
+  return (
+    !!themaVoorkeur &&
+    typeof themaId === 'string' &&
+    Object.hasOwn(themaVoorkeur.scopes, themaId)
+  );
+}
+
+// Zet de voorkeur voor alle zaken van een thema. Net als bij een zaak mag alleen een geverifieerd adres van
+// de klant zelf gekozen worden. Er is geen controle op de zaak nodig: het raakt alleen het eigen profiel.
+// Contactgegevens (value) komen niet in foutmeldingen of logs.
+export async function handleSetThemaKanaalVoorkeur(
+  req: Request,
+  res: ResponseAuthenticated
+) {
+  const { themaId, kanaal, value } = req.body ?? {};
+
+  if (!isThemaBekend(themaId)) {
+    return sendBadRequest(res, 'themaId is not supported');
+  }
+
+  if (!klantcontactConfig.zaakVoorkeur.kanalen.includes(kanaal)) {
+    return sendBadRequest(res, 'kanaal is not supported for a themavoorkeur');
+  }
+
+  if (!value || typeof value !== 'string') {
+    return sendBadRequest(res, 'value is required');
+  }
+
+  const contactgegevens = await klantcontactBackend.fetchContactgegevens(
+    res.locals.authProfileAndToken
+  );
+
+  if (contactgegevens.status !== 'OK') {
+    return sendInternalServerError(
+      res,
+      'Ophalen van de contactgegevens mislukt'
+    );
+  }
+
+  // Een zaakadres of themaadres telt niet: de klant kiest uit zijn eigen, al geverifieerde standaardadressen.
+  const isGeverifieerdAdresVanKlant = contactgegevens.content.some(
+    (contactgegeven) =>
+      !contactgegeven.referentie &&
+      !getThemaId(klantcontactConfig, contactgegeven) &&
+      contactgegeven.type === kanaal &&
+      contactgegeven.waarde === value &&
+      contactgegeven.isGeverifieerd
+  );
+
+  if (!isGeverifieerdAdresVanKlant) {
+    return sendBadRequest(
+      res,
+      'Only a verified contactgegeven of the user can be chosen'
+    );
+  }
+
+  const response = await setThemaKanaalVoorkeur(
+    res.locals.authProfileAndToken,
+    klantcontactBackend,
+    klantcontactConfig,
+    { themaId, kanaal, value }
+  );
+
+  return sendResponse(res, response);
+}
+
+// Verwijdert de voorkeur voor alle zaken van een thema. Een keuze voor één zaak blijft staan.
+export async function handleDeleteThemaKanaalVoorkeur(
+  req: Request,
+  res: ResponseAuthenticated
+) {
+  const { themaId } = req.body ?? {};
+
+  if (!isThemaBekend(themaId)) {
+    return sendBadRequest(res, 'themaId is not supported');
+  }
+
+  const response = await deleteThemaKanaalVoorkeur(
+    res.locals.authProfileAndToken,
+    klantcontactBackend,
+    klantcontactConfig,
+    themaId
   );
 
   return sendResponse(res, response);

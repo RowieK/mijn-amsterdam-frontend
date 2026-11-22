@@ -2,9 +2,11 @@ import type { ZaakVoorkeurZaak } from './useZaakVoorkeurThemas.ts';
 import type {
   ContactgegevenFrontend,
   ContactgegevenPerTypeFrontend,
+  ThemaKanaalVoorkeurFrontend,
   ZaakKanaal,
   ZaakKanaalVoorkeurFrontend,
 } from '../../../../../../../server/services/klantcontact/klantcontact-profieldienst-types.ts';
+import { bepaalEffectieveVoorkeur } from '../../../../../../../server/services/klantcontact/klantcontact-thema-voorkeur.ts';
 
 const ZAAK_KANAAL_LABELS = {
   Email: { label: 'E-mail', compact: 'e-mail' },
@@ -27,6 +29,31 @@ export function getVerifiedZaakKanalen(
       ? [{ ...contactgegeven, type, value: contactgegeven.value }]
       : [];
   });
+}
+
+// De BFF slaat een telefoonnummer op als +31612345678, terwijl het standaardadres als 0612345678 kan staan.
+function normalizeWaarde(
+  type: ContactgegevenFrontend['type'],
+  value: string | null
+): string | null {
+  if (type !== 'Telefoonnummer' || !value) {
+    return value;
+  }
+  return value.replace(/[\s()-]/g, '').replace(/^(\+31|0031)/, '0');
+}
+
+// Een zaak- of themakeuze is een eigen adres met dezelfde waarde als een standaardadres. Het id verschilt dus,
+// daarom wordt op kanaal en waarde vergeleken.
+export function findKanaalVoorContactgegeven(
+  kanalen: VerifiedZaakKanaal[],
+  contactgegeven: Pick<ContactgegevenFrontend, 'type' | 'value'>
+): VerifiedZaakKanaal | undefined {
+  const waarde = normalizeWaarde(contactgegeven.type, contactgegeven.value);
+  return kanalen.find(
+    (kanaal) =>
+      kanaal.type === contactgegeven.type &&
+      normalizeWaarde(kanaal.type, kanaal.value) === waarde
+  );
 }
 
 // Bijvoorbeeld "SMS: 0612345678" in een keuzelijst en "sms: 0612345678" in een lopende tekst.
@@ -64,21 +91,26 @@ export type ZaakThemaNotificaties = {
   kanalen: string[];
 };
 
+// Per zaak geldt de keuze voor de zaak zelf, anders de keuze voor het thema, anders de standaardinstelling.
 export function getZaakThemaNotificaties(
   zaken: ZaakVoorkeurZaak[],
-  voorkeuren: ZaakKanaalVoorkeurFrontend[] = []
+  voorkeuren: ZaakKanaalVoorkeurFrontend[] = [],
+  themaVoorkeur?: ThemaKanaalVoorkeurFrontend
 ): ZaakThemaNotificaties {
-  const voorkeurenPerZaak = zaken.map(({ zaakIdentificatie }) =>
-    voorkeuren.find(
-      (voorkeur) => voorkeur.zaakIdentificatie === zaakIdentificatie
+  const effectievePerZaak = zaken.map(({ zaakIdentificatie }) =>
+    bepaalEffectieveVoorkeur(
+      voorkeuren.find(
+        (voorkeur) => voorkeur.zaakIdentificatie === zaakIdentificatie
+      ),
+      themaVoorkeur
     )
   );
 
-  const kanalen = voorkeurenPerZaak.flatMap((voorkeur) =>
-    voorkeur
+  const kanalen = effectievePerZaak.flatMap(({ contactgegeven }) =>
+    contactgegeven
       ? [
-          `${formatZaakKanaal(voorkeur.contactgegeven, { compact: true })}${
-            voorkeur.contactgegeven.isVerified ? '' : ' (nog niet gevalideerd)'
+          `${formatZaakKanaal(contactgegeven, { compact: true })}${
+            contactgegeven.isVerified ? '' : ' (nog niet gevalideerd)'
           }`,
         ]
       : []
@@ -86,7 +118,8 @@ export function getZaakThemaNotificaties(
 
   return {
     heeftStandaard:
-      voorkeurenPerZaak.length === 0 || voorkeurenPerZaak.some((v) => !v),
+      effectievePerZaak.length === 0 ||
+      effectievePerZaak.some(({ niveau }) => niveau === 'standaard'),
     kanalen: [...new Set(kanalen)],
   };
 }

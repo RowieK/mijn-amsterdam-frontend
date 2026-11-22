@@ -4,6 +4,8 @@ import { ContactgegevenByTypeLabels } from './CommunicatieVoorkeuren-config.ts';
 import type {
   ContactgegevenType,
   ContactgegevenFrontend,
+  ThemaKanaalVoorkeurFrontend,
+  ThemaKanaalVoorkeurPayloadFrontend,
   VerifyVerificationRequestResponse,
   ZaakKanaalVoorkeurFrontend,
   ZaakKanaalVoorkeurPayloadFrontend,
@@ -71,6 +73,35 @@ function updateZaakKanaalVoorkeurenState(
           ...communicatievoorkeuren,
           zaakKanaalVoorkeuren: update(
             communicatievoorkeuren.zaakKanaalVoorkeuren ?? []
+          ),
+        },
+      },
+    },
+  });
+}
+
+// Net als bij de zaakvoorkeuren wordt de lijst met themavoorkeuren vervangen en niet per index samengevoegd.
+function updateThemaKanaalVoorkeurenState(
+  update: (
+    huidige: ThemaKanaalVoorkeurFrontend[]
+  ) => ThemaKanaalVoorkeurFrontend[]
+) {
+  const { KLANT_CONTACT, setAppState } = useAppStateStore.getState();
+  const communicatievoorkeuren = KLANT_CONTACT.content?.communicatievoorkeuren;
+
+  if (!KLANT_CONTACT.content || !communicatievoorkeuren) {
+    return;
+  }
+
+  setAppState({
+    KLANT_CONTACT: {
+      ...KLANT_CONTACT,
+      content: {
+        ...KLANT_CONTACT.content,
+        communicatievoorkeuren: {
+          ...communicatievoorkeuren,
+          themaKanaalVoorkeuren: update(
+            communicatievoorkeuren.themaKanaalVoorkeuren ?? []
           ),
         },
       },
@@ -151,6 +182,54 @@ export function useVerwijderZaakKanaalVoorkeur(zaakIdentificatie: string) {
       if (response.status === 'OK') {
         updateZaakKanaalVoorkeurenState((huidige) =>
           huidige.filter((v) => v.zaakIdentificatie !== zaakIdentificatie)
+        );
+      }
+      return response;
+    });
+  };
+}
+
+export function useSetThemaKanaalVoorkeur(
+  onCallback: (
+    voorkeur: ThemaKanaalVoorkeurFrontend | null,
+    success: boolean
+  ) => void,
+  themaId: string
+) {
+  // Een eigen cacheKey per thema, om dezelfde reden als bij de zaakvoorkeuren.
+  return useBffApi<
+    ThemaKanaalVoorkeurFrontend,
+    ThemaKanaalVoorkeurPayloadFrontend
+  >(`themavoorkeur-set-${themaId}`, {
+    url: BFFApiUrls.KLANTCONTACT_THEMAVOORKEUR_SET,
+    fetchImmediately: false,
+    sendRequest: async (url, init) => {
+      return sendFormPostRequest<ThemaKanaalVoorkeurFrontend>(url, init).then(
+        (response) => {
+          const voorkeur = response.content;
+          if (response.status === 'OK' && voorkeur) {
+            updateThemaKanaalVoorkeurenState((huidige) => [
+              ...huidige.filter((v) => v.themaId !== voorkeur.themaId),
+              voorkeur,
+            ]);
+          }
+          onCallback(voorkeur ?? null, response.status === 'OK');
+          return response;
+        }
+      );
+    },
+  });
+}
+
+export function useVerwijderThemaKanaalVoorkeur(themaId: string) {
+  return function handleDelete() {
+    return sendFormPostRequest<null>(
+      BFFApiUrls.KLANTCONTACT_THEMAVOORKEUR_DELETE,
+      { payload: { themaId } }
+    ).then((response) => {
+      if (response.status === 'OK') {
+        updateThemaKanaalVoorkeurenState((huidige) =>
+          huidige.filter((v) => v.themaId !== themaId)
         );
       }
       return response;

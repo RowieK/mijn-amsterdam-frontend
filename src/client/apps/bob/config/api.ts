@@ -35,6 +35,9 @@ export const BFFApiUrls = {
   // Kanaalvoorkeur per zaak (voorlopige routes)
   KLANTCONTACT_ZAAKVOORKEUR_SET: `${BFF_API_BASE_URL}/services/klantcontact/zaakvoorkeur/set`,
   KLANTCONTACT_ZAAKVOORKEUR_DELETE: `${BFF_API_BASE_URL}/services/klantcontact/zaakvoorkeur/delete`,
+  // Kanaalvoorkeur voor alle zaken van een thema
+  KLANTCONTACT_THEMAVOORKEUR_SET: `${BFF_API_BASE_URL}/services/klantcontact/themavoorkeur/set`,
+  KLANTCONTACT_THEMAVOORKEUR_DELETE: `${BFF_API_BASE_URL}/services/klantcontact/themavoorkeur/delete`,
 } as const;
 
 // Urls directly used from front-end

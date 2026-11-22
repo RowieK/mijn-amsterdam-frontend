@@ -1,4 +1,5 @@
 import type {
+  ContactGegevenScopeSource,
   ContactgegevenFrontend,
   ContactgegevenSource,
   ContactgegevenType,
@@ -6,6 +7,7 @@ import type {
   VerifyVerificationRequestResponse,
   ZaakKanaal,
 } from './klantcontact-profieldienst-types.ts';
+import type { ScopeKanaalConfig } from './klantcontact-scope-kanalen.ts';
 import type { ApiResponse } from '../../../universal/helpers/api.ts';
 import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
 
@@ -22,11 +24,19 @@ export type GemeenteKlantcontactConfig = {
     referentie: ZaakReferentieStrategy;
     kanalen: ZaakKanaal[];
   };
+  // Een keuze voor alle zaken van een thema. Zonder deze instelling kent de gemeente geen themakeuze.
+  // `kanalen` zijn de toegestane kanalen per thema (scope-kanalen), `scopes` koppelt een thema aan de
+  // dienst waaronder de profielservice het contactgegeven bewaart.
+  themaVoorkeur?: {
+    kanalen: ScopeKanaalConfig;
+    scopes: Record<string, ContactGegevenScopeSource>;
+  };
 };
 
 export type CreateContactgegevenOptions = {
   referentie?: string;
   isDefault?: boolean;
+  scope?: ContactGegevenScopeSource;
 };
 
 export type VerifyVerificationRequestProps = {

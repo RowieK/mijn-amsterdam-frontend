@@ -137,6 +137,35 @@ describe.each([
       });
     });
 
+    test('met een scope gaat de scope mee en is het contactgegeven een themakeuze zonder referentie', async () => {
+      let body: unknown;
+      remoteApi
+        .post(`${basePath}/contactgegeven`, (requestBody) => {
+          body = requestBody;
+          return true;
+        })
+        .reply(200, { ...contactgegevenResponse, isDefault: false });
+
+      await backend.createContactgegeven(
+        authProfileAndToken,
+        'Email',
+        'mokum@example.org',
+        {
+          isDefault: false,
+          scope: { dienstverlenerNaam: 'amsterdam', dienstNaam: 'erfpacht' },
+        }
+      );
+
+      expect(body).toEqual({
+        identificatieType: 'BSN',
+        identificatieNummer: authProfileAndToken.profile.id,
+        type: 'Email',
+        waarde: 'mokum@example.org',
+        isDefault: false,
+        scope: { dienstverlenerNaam: 'amsterdam', dienstNaam: 'erfpacht' },
+      });
+    });
+
     test('geeft een foutresultaat en doet geen aanroep bij een ongeldig mobiel nummer', async () => {
       const response = await backend.createContactgegeven(
         authProfileAndToken,

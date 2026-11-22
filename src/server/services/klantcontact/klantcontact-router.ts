@@ -6,6 +6,8 @@ import {
   handleDeleteContactgegeven,
   handleSetZaakKanaalVoorkeur,
   handleDeleteZaakKanaalVoorkeur,
+  handleSetThemaKanaalVoorkeur,
+  handleDeleteThemaKanaalVoorkeur,
 } from './klantcontact-route-handlers.ts';
 import { featureToggle, routes } from './klantcontact-service-config.ts';
 import { createBFFRouter } from '../../routing/route-helpers.ts';
@@ -26,6 +28,12 @@ routerZaakvoorkeur.post(routes.ZAAKVOORKEUR_SET, handleSetZaakKanaalVoorkeur);
 routerZaakvoorkeur.post(
   routes.ZAAKVOORKEUR_DELETE,
   handleDeleteZaakKanaalVoorkeur
+);
+
+routerZaakvoorkeur.post(routes.THEMAVOORKEUR_SET, handleSetThemaKanaalVoorkeur);
+routerZaakvoorkeur.post(
+  routes.THEMAVOORKEUR_DELETE,
+  handleDeleteThemaKanaalVoorkeur
 );
 
 routerProtected.use(routerZaakvoorkeur);

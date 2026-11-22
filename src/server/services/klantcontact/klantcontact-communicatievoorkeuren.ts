@@ -5,16 +5,22 @@ import type {
 } from './klantcontact-backend-types.ts';
 import {
   getMostRecentByContactgegevenType,
+  getThemaId,
+  getThemaKanaalVoorkeuren,
   getValidZaakReferentie,
   getZaakKanaalVoorkeuren,
+  withoutThemaContactgegevens,
 } from './klantcontact-helpers.ts';
 import type {
   CommunicatievoorkeurenResponseFrontend,
   ContactgegevenType,
+  ThemaKanaalVoorkeurFrontend,
+  ThemaKanaalVoorkeurPayloadFrontend,
   ZaakKanaalVoorkeurFrontend,
   ZaakKanaalVoorkeurPayloadFrontend,
 } from './klantcontact-profieldienst-types.ts';
 import { featureToggle } from './klantcontact-service-config.ts';
+import { validateThemaKeuze } from './klantcontact-thema-voorkeur.ts';
 import {
   apiErrorResult,
   apiPostponeResult,
@@ -39,7 +45,8 @@ export const ContactgegevenTypeValues = Object.values(
 
 export async function fetchCommunicatievoorkeuren(
   authProfileAndToken: AuthProfileAndToken,
-  backend: ProfielserviceBackend
+  backend: ProfielserviceBackend,
+  config?: GemeenteKlantcontactConfig
 ): Promise<ApiResponse<CommunicatievoorkeurenResponseFrontend>> {
   if (!featureToggle.communicatievoorkeuren) {
     return apiPostponeResult(null);
@@ -69,16 +76,21 @@ export async function fetchCommunicatievoorkeuren(
     return apiErrorResult('Ophalen van het communicatieprofiel mislukt', null);
   }
 
+  // Een keuze voor een thema is geen standaardadres van de klant.
+  const standaardBron = config
+    ? withoutThemaContactgegevens(config, contactgegevens)
+    : contactgegevens;
+
   const email = getMostRecentByContactgegevenType(
-    contactgegevens,
+    standaardBron,
     ContactgegevenTypes.Email
   );
   const phone = getMostRecentByContactgegevenType(
-    contactgegevens,
+    standaardBron,
     ContactgegevenTypes.Telefoonnummer
   );
   const app = getMostRecentByContactgegevenType(
-    contactgegevens,
+    standaardBron,
     ContactgegevenTypes.ApplicatieId
   );
 
@@ -114,7 +126,122 @@ export async function fetchCommunicatievoorkeuren(
     aangeslotenDiensten,
     standaardContactgegevens,
     zaakKanaalVoorkeuren: getZaakKanaalVoorkeuren(contactgegevens),
+    themaKanaalVoorkeuren: config
+      ? getThemaKanaalVoorkeuren(config, contactgegevens)
+      : [],
   });
+}
+
+// Het thema waarvoor de gemeente een themakeuze kent, met de scope waaronder die wordt bewaard.
+// Een onbekend thema (ook een naam als `constructor`) levert null op: privacy by default.
+function getThemaScope(config: GemeenteKlantcontactConfig, themaId: unknown) {
+  const themaVoorkeur = config.themaVoorkeur;
+
+  return themaVoorkeur &&
+    typeof themaId === 'string' &&
+    Object.hasOwn(themaVoorkeur.scopes, themaId)
+    ? themaVoorkeur.scopes[themaId]
+    : null;
+}
+
+// Zet de keuze voor alle zaken van een thema. Net als bij een zaak eerst het nieuwe adres aanmaken en dan
+// pas het oude verwijderen. Het adres hoort bij het thema (scope) en heeft geen referentie: een keuze
+// voor een zaak (met referentie) gaat daarom voor. Het nieuwe adres is ongeverifieerd.
+// Contactgegevens (waarde) komen niet in foutmeldingen of logs.
+export async function setThemaKanaalVoorkeur(
+  authProfileAndToken: AuthProfileAndToken,
+  backend: KlantcontactBackend,
+  config: GemeenteKlantcontactConfig,
+  { themaId, kanaal, value }: ThemaKanaalVoorkeurPayloadFrontend
+): Promise<ApiResponse<ThemaKanaalVoorkeurFrontend>> {
+  const scope = getThemaScope(config, themaId);
+
+  if (!config.themaVoorkeur || !scope) {
+    return apiErrorResult('Onbekend thema', null);
+  }
+
+  if (
+    !config.zaakVoorkeur.kanalen.includes(kanaal) ||
+    !validateThemaKeuze(config.themaVoorkeur.kanalen, themaId, kanaal).valid
+  ) {
+    return apiErrorResult('Kanaal is niet toegestaan voor dit thema', null);
+  }
+
+  const contactgegevens =
+    await backend.fetchContactgegevens(authProfileAndToken);
+
+  if (contactgegevens.status !== 'OK') {
+    return apiErrorResult('Ophalen van de contactgegevens mislukt', null);
+  }
+
+  const oudeContactgegevens = contactgegevens.content.filter(
+    (contactgegeven) => getThemaId(config, contactgegeven) === themaId
+  );
+
+  const nieuwContactgegeven = await backend.createContactgegeven(
+    authProfileAndToken,
+    kanaal,
+    value,
+    { isDefault: false, scope }
+  );
+
+  if (nieuwContactgegeven.status !== 'OK') {
+    return apiErrorResult('Aanmaken van de themavoorkeur mislukt', null);
+  }
+
+  const deleteResponses = await Promise.all(
+    oudeContactgegevens.map((oud) =>
+      backend.deleteContactgegeven(authProfileAndToken, oud.id)
+    )
+  );
+
+  if (deleteResponses.some((response) => response.status !== 'OK')) {
+    return apiErrorResult(
+      'Verwijderen van de oude themavoorkeur mislukt',
+      null
+    );
+  }
+
+  return apiSuccessResult({
+    themaId,
+    contactgegeven: nieuwContactgegeven.content,
+  });
+}
+
+// Verwijdert de keuze voor een thema. Zaken zonder eigen keuze volgen daarna weer het standaardadres.
+// Een keuze voor een zaak blijft staan. Is er geen themakeuze, dan is het resultaat een succes.
+export async function deleteThemaKanaalVoorkeur(
+  authProfileAndToken: AuthProfileAndToken,
+  backend: KlantcontactBackend,
+  config: GemeenteKlantcontactConfig,
+  themaId: string
+): Promise<ApiResponse<null>> {
+  if (!getThemaScope(config, themaId)) {
+    return apiErrorResult('Onbekend thema', null);
+  }
+
+  const contactgegevens =
+    await backend.fetchContactgegevens(authProfileAndToken);
+
+  if (contactgegevens.status !== 'OK') {
+    return apiErrorResult('Ophalen van de contactgegevens mislukt', null);
+  }
+
+  const deleteResponses = await Promise.all(
+    contactgegevens.content
+      .filter(
+        (contactgegeven) => getThemaId(config, contactgegeven) === themaId
+      )
+      .map((contactgegeven) =>
+        backend.deleteContactgegeven(authProfileAndToken, contactgegeven.id)
+      )
+  );
+
+  if (deleteResponses.some((response) => response.status !== 'OK')) {
+    return apiErrorResult('Verwijderen van de themavoorkeur mislukt', null);
+  }
+
+  return apiSuccessResult(null);
 }
 
 // Vervangt de voorkeur voor één zaak. Eerst het nieuwe adres aanmaken en dan pas de oude

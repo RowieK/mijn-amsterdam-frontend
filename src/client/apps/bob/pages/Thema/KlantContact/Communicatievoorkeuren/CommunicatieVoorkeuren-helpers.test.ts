@@ -3,12 +3,14 @@ import { describe, expect, it } from 'vitest';
 import {
   formatZaakKanaal,
   getStandaardNotificatieKanalen,
+  findKanaalVoorContactgegeven,
   getVerifiedZaakKanalen,
   getZaakThemaNotificaties,
 } from './CommunicatieVoorkeuren-helpers.ts';
 import type {
   ContactgegevenFrontend,
   ContactgegevenPerTypeFrontend,
+  ThemaKanaalVoorkeurFrontend,
   ZaakKanaalVoorkeurFrontend,
 } from '../../../../../../../server/services/klantcontact/klantcontact-profieldienst-types.ts';
 
@@ -55,6 +57,46 @@ function createVoorkeur(
     contactgegeven: createContactgegeven({ id: 'zaak-cg', ...contactgegeven }),
   };
 }
+
+describe('findKanaalVoorContactgegeven', () => {
+  const kanalen = getVerifiedZaakKanalen(createStandaard());
+
+  it('vindt het kanaal met hetzelfde type en dezelfde waarde', () => {
+    expect(
+      findKanaalVoorContactgegeven(
+        kanalen,
+        createContactgegeven({ type: 'Email', value: 'a@example.com' })
+      )?.type
+    ).toBe('Email');
+  });
+
+  it.each(['+31612345678', '0031612345678', '06 12345678', '0612345678'])(
+    'ziet het telefoonnummer %s als hetzelfde nummer als 0612345678',
+    (value) => {
+      expect(
+        findKanaalVoorContactgegeven(
+          kanalen,
+          createContactgegeven({ type: 'Telefoonnummer', value })
+        )?.type
+      ).toBe('Telefoonnummer');
+    }
+  );
+
+  it('vindt niets bij een ander nummer of een andere waarde', () => {
+    expect(
+      findKanaalVoorContactgegeven(
+        kanalen,
+        createContactgegeven({ type: 'Telefoonnummer', value: '0687654321' })
+      )
+    ).toBeUndefined();
+    expect(
+      findKanaalVoorContactgegeven(
+        kanalen,
+        createContactgegeven({ type: 'Email', value: 'ander@example.com' })
+      )
+    ).toBeUndefined();
+  });
+});
 
 describe('formatZaakKanaal', () => {
   it('geeft het kanaal als label in een keuzelijst', () => {
@@ -189,5 +231,42 @@ describe('getZaakThemaNotificaties', () => {
         createVoorkeur('ZAAK-1', { ...sms, isVerified: false }),
       ]).kanalen
     ).toEqual(['sms: 0612345678 (nog niet gevalideerd)']);
+  });
+
+  describe('met een keuze voor het hele thema', () => {
+    const themaSms: ThemaKanaalVoorkeurFrontend = {
+      themaId: 'TEST-THEMA',
+      contactgegeven: createContactgegeven({
+        id: 'thema-cg',
+        ...sms,
+      }),
+    };
+    const email = { type: 'Email', value: 'a@example.com' } as const;
+
+    it('past de themakeuze toe op alle zaken zonder eigen keuze', () => {
+      expect(getZaakThemaNotificaties(zaken, [], themaSms)).toEqual({
+        heeftStandaard: false,
+        kanalen: ['sms: 0612345678'],
+      });
+    });
+
+    it('laat de keuze voor een zaak voorgaan op de themakeuze', () => {
+      expect(
+        getZaakThemaNotificaties(
+          zaken,
+          [createVoorkeur('ZAAK-1', email)],
+          themaSms
+        )
+      ).toEqual({
+        heeftStandaard: false,
+        kanalen: ['e-mail: a@example.com', 'sms: 0612345678'],
+      });
+    });
+
+    it('toont standaard zolang een thema geen zaken heeft', () => {
+      expect(getZaakThemaNotificaties([], [], themaSms).heeftStandaard).toBe(
+        true
+      );
+    });
   });
 });

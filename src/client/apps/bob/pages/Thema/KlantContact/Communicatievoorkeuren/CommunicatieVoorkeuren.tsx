@@ -12,6 +12,7 @@ import type {
   ContactgegevenPerTypeFrontend,
   ContactgegevenType,
   DienstSource,
+  ThemaKanaalVoorkeurFrontend,
   ZaakKanaalVoorkeurFrontend,
 } from '../../../../../../../server/services/klantcontact/klantcontact-profieldienst-types.ts';
 import { MaLink } from '../../../../../../components/MaLink/MaLink.tsx';
@@ -61,6 +62,7 @@ type CommunicatieVoorkeurenProps = {
   standaardContactgegevens: ContactgegevenPerTypeFrontend | null;
   aangeslotenDiensten?: DienstSource[];
   zaakKanaalVoorkeuren?: ZaakKanaalVoorkeurFrontend[];
+  themaKanaalVoorkeuren?: ThemaKanaalVoorkeurFrontend[];
   zaakThemas?: ZaakVoorkeurThema[];
 };
 
@@ -68,6 +70,7 @@ export function CommunicatieVoorkeuren({
   standaardContactgegevens,
   aangeslotenDiensten,
   zaakKanaalVoorkeuren,
+  themaKanaalVoorkeuren,
   zaakThemas,
 }: CommunicatieVoorkeurenProps) {
   return (
@@ -107,6 +110,7 @@ export function CommunicatieVoorkeuren({
           standaardContactgegevens={standaardContactgegevens}
           aangeslotenDiensten={aangeslotenDiensten}
           zaakKanaalVoorkeuren={zaakKanaalVoorkeuren}
+          themaKanaalVoorkeuren={themaKanaalVoorkeuren}
           zaakThemas={zaakThemas}
         />
       </section>

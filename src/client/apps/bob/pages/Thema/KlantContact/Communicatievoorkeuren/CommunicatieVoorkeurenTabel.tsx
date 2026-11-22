@@ -6,11 +6,13 @@ import {
   getZaakThemaNotificaties,
 } from './CommunicatieVoorkeuren-helpers.ts';
 import styles from './CommunicatieVoorkeuren.module.scss';
+import { ThemaKanaalVoorkeur } from './ThemaKanaalVoorkeur.tsx';
 import type { ZaakVoorkeurThema } from './useZaakVoorkeurThemas.ts';
 import { ZaakKanaalVoorkeur } from './ZaakKanaalVoorkeur.tsx';
 import type {
   ContactgegevenPerTypeFrontend,
   DienstSource,
+  ThemaKanaalVoorkeurFrontend,
   ZaakKanaalVoorkeurFrontend,
 } from '../../../../../../../server/services/klantcontact/klantcontact-profieldienst-types.ts';
 import {
@@ -26,6 +28,7 @@ type CommunicatieVoorkeurenTabelProps = {
   standaardContactgegevens: ContactgegevenPerTypeFrontend | null;
   aangeslotenDiensten?: DienstSource[];
   zaakKanaalVoorkeuren?: ZaakKanaalVoorkeurFrontend[];
+  themaKanaalVoorkeuren?: ThemaKanaalVoorkeurFrontend[];
   zaakThemas?: ZaakVoorkeurThema[];
 };
 
@@ -50,6 +53,7 @@ export function CommunicatieVoorkeurenTabel({
   standaardContactgegevens,
   aangeslotenDiensten = [],
   zaakKanaalVoorkeuren = [],
+  themaKanaalVoorkeuren = [],
   zaakThemas = [],
 }: CommunicatieVoorkeurenTabelProps) {
   const isZaakVoorkeurActive = themaConfig.featureToggle.zaakvoorkeuren.active;
@@ -104,9 +108,13 @@ export function CommunicatieVoorkeurenTabel({
           </Table.Cell>
         </Table.Row>
         {zaakThemas.map((thema) => {
+          const themaVoorkeur = themaKanaalVoorkeuren.find(
+            (voorkeur) => voorkeur.themaId === thema.id
+          );
           const { heeftStandaard, kanalen } = getZaakThemaNotificaties(
             thema.zaken,
-            zaakKanaalVoorkeuren
+            zaakKanaalVoorkeuren,
+            themaVoorkeur
           );
           return (
             <Table.Row key={thema.id}>
@@ -126,15 +134,24 @@ export function CommunicatieVoorkeurenTabel({
                       modal={{ title: `Notificaties voor ${thema.title}` }}
                     >
                       <Paragraph className="ams-mb-m">
-                        Kies per zaak waar u notificaties over de voortgang van
-                        uw zaak wilt ontvangen.
+                        Kies waar u notificaties over de voortgang van uw zaken
+                        wilt ontvangen: één keer voor het hele thema, of per
+                        zaak. Een keuze voor een zaak gaat voor op de keuze voor
+                        het thema.
                       </Paragraph>
+                      <ThemaKanaalVoorkeur
+                        themaId={thema.id}
+                        themaTitel={thema.title}
+                        standaardContactgegevens={standaardContactgegevens}
+                        voorkeur={themaVoorkeur}
+                      />
                       {thema.zaken.map((zaak) => (
                         <ZaakKanaalVoorkeur
                           key={zaak.zaakIdentificatie}
                           zaakIdentificatie={zaak.zaakIdentificatie}
                           omschrijving={zaak.omschrijving}
                           standaardContactgegevens={standaardContactgegevens}
+                          themaVoorkeur={themaVoorkeur}
                           voorkeur={zaakKanaalVoorkeuren.find(
                             (voorkeur) =>
                               voorkeur.zaakIdentificatie ===

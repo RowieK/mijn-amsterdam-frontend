@@ -20,7 +20,11 @@ import type {
   VerifyVerificationRequestResponse,
 } from './klantcontact-profieldienst-types.ts';
 import type { DienstverlenerSource } from './klantcontact-profieldienst-types.ts';
-import { apiErrorResult, apiSuccessResult, type ApiResponse, } from '../../../universal/helpers/api.ts';
+import {
+  apiErrorResult,
+  apiSuccessResult,
+  type ApiResponse,
+} from '../../../universal/helpers/api.ts';
 import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
 import { getCustomApiConfig } from '../../helpers/source-api-helpers.ts';
 import { requestData } from '../../helpers/source-api-request.ts';
@@ -138,7 +142,7 @@ async function createContactgegeven(
   authProfileAndToken: AuthProfileAndToken,
   contactgegevenType: ContactgegevenType,
   contactgegevenWaarde: string,
-  { referentie, isDefault = true }: CreateContactgegevenOptions = {}
+  { referentie, isDefault = true, scope }: CreateContactgegevenOptions = {}
 ): Promise<ApiResponse<ContactgegevenFrontend>> {
   const waarde =
     contactgegevenType === 'Telefoonnummer'
@@ -159,6 +163,7 @@ async function createContactgegeven(
     waarde: waarde.content,
     isDefault,
     ...(referentie && { referentie }),
+    ...(scope && { scope }),
   };
 
   const apiConfig = getCustomApiConfig(profielserviceConfig, {

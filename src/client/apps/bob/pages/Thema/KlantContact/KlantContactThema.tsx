@@ -81,6 +81,9 @@ export function KlantContactThema() {
                 zaakKanaalVoorkeuren={
                   communicatievoorkeuren?.zaakKanaalVoorkeuren
                 }
+                themaKanaalVoorkeuren={
+                  communicatievoorkeuren?.themaKanaalVoorkeuren
+                }
                 zaakThemas={zaakThemas}
               />
             </PageContentCell>

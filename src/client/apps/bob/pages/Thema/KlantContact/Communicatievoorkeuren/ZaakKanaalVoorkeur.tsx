@@ -10,6 +10,7 @@ import {
 } from '@amsterdam/design-system-react';
 
 import {
+  findKanaalVoorContactgegeven,
   formatZaakKanaal,
   getVerifiedZaakKanalen,
 } from './CommunicatieVoorkeuren-helpers.ts';
@@ -19,9 +20,11 @@ import {
 } from './useCommunicatieVoorkeuren.ts';
 import type {
   ContactgegevenPerTypeFrontend,
+  ThemaKanaalVoorkeurFrontend,
   ZaakKanaal,
   ZaakKanaalVoorkeurFrontend,
 } from '../../../../../../../server/services/klantcontact/klantcontact-profieldienst-types.ts';
+import { bepaalEffectieveVoorkeur } from '../../../../../../../server/services/klantcontact/klantcontact-thema-voorkeur.ts';
 import { Spinner } from '../../../../../../components/Spinner/Spinner.tsx';
 
 const STANDAARD = 'standaard';
@@ -33,6 +36,8 @@ type ZaakKanaalVoorkeurProps = {
   omschrijving?: string;
   standaardContactgegevens: ContactgegevenPerTypeFrontend | null;
   voorkeur?: ZaakKanaalVoorkeurFrontend;
+  // De keuze voor het hele thema. De keuze voor de zaak zelf gaat voor.
+  themaVoorkeur?: ThemaKanaalVoorkeurFrontend;
 };
 
 export function ZaakKanaalVoorkeur({
@@ -40,17 +45,16 @@ export function ZaakKanaalVoorkeur({
   omschrijving,
   standaardContactgegevens,
   voorkeur,
+  themaVoorkeur,
 }: ZaakKanaalVoorkeurProps) {
   const kanalen = getVerifiedZaakKanalen(standaardContactgegevens);
+  const effectief = bepaalEffectieveVoorkeur(voorkeur, themaVoorkeur);
 
   // De voorkeur van de zaak is een eigen adres met dezelfde waarde als een standaardadres. Het id verschilt dus,
   // daarom wordt op kanaal en waarde vergeleken.
   const huidigeKeuze: Keuze | null = voorkeur
-    ? (kanalen.find(
-        ({ type, value }) =>
-          type === voorkeur.contactgegeven.type &&
-          value === voorkeur.contactgegeven.value
-      )?.type ?? null)
+    ? (findKanaalVoorContactgegeven(kanalen, voorkeur.contactgegeven)?.type ??
+      null)
     : STANDAARD;
 
   const [keuze, setKeuze] = useState<Keuze | null>(huidigeKeuze);
@@ -113,10 +117,11 @@ export function ZaakKanaalVoorkeur({
             : zaakIdentificatie
         }
       >
-        {voorkeur && (
+        {effectief.contactgegeven && (
           <Paragraph size="small" className="ams-mb-s">
-            Huidige keuze: {formatZaakKanaal(voorkeur.contactgegeven)}
-            {!voorkeur.contactgegeven.isVerified && ' (nog niet gevalideerd)'}
+            Huidige keuze: {formatZaakKanaal(effectief.contactgegeven)}
+            {!effectief.contactgegeven.isVerified && ' (nog niet gevalideerd)'}
+            {effectief.niveau === 'thema' && ' (ingesteld voor het hele thema)'}
           </Paragraph>
         )}
         <Field>
@@ -129,7 +134,9 @@ export function ZaakKanaalVoorkeur({
               setIsSaved(false);
             }}
           >
-            Standaardinstelling gebruiken
+            {themaVoorkeur
+              ? 'De keuze voor het hele thema volgen'
+              : 'Standaardinstelling gebruiken'}
           </Radio>
         </Field>
         {kanalen.map((kanaal) => (

@@ -16,6 +16,8 @@ vi.mock('./klantcontact-route-handlers.ts', () => {
     handleDeleteContactgegeven: respondWith('delete'),
     handleSetZaakKanaalVoorkeur: respondWith('zaakvoorkeur-set'),
     handleDeleteZaakKanaalVoorkeur: respondWith('zaakvoorkeur-delete'),
+    handleSetThemaKanaalVoorkeur: respondWith('themavoorkeur-set'),
+    handleDeleteThemaKanaalVoorkeur: respondWith('themavoorkeur-delete'),
   };
 });
 
@@ -64,6 +66,8 @@ describe('klantcontact-router', () => {
     test.each([
       { route: routes.ZAAKVOORKEUR_SET, handler: 'zaakvoorkeur-set' },
       { route: routes.ZAAKVOORKEUR_DELETE, handler: 'zaakvoorkeur-delete' },
+      { route: routes.THEMAVOORKEUR_SET, handler: 'themavoorkeur-set' },
+      { route: routes.THEMAVOORKEUR_DELETE, handler: 'themavoorkeur-delete' },
     ])('$route is bereikbaar', async ({ route, handler }) => {
       const router = await importRouter({ zaakvoorkeuren: true });
 
@@ -75,24 +79,23 @@ describe('klantcontact-router', () => {
   });
 
   describe('met de toggle KLANT_CONTACT.zaakvoorkeuren uit', () => {
-    test.each([routes.ZAAKVOORKEUR_SET, routes.ZAAKVOORKEUR_DELETE])(
-      '%s is niet bereikbaar',
-      async (route) => {
-        const router = await importRouter({ zaakvoorkeuren: false });
+    test.each([
+      routes.ZAAKVOORKEUR_SET,
+      routes.ZAAKVOORKEUR_DELETE,
+      routes.THEMAVOORKEUR_SET,
+      routes.THEMAVOORKEUR_DELETE,
+    ])('%s is niet bereikbaar', async (route) => {
+      const router = await importRouter({ zaakvoorkeuren: false });
 
-        const response = await postToRouter(router, route);
+      const response = await postToRouter(router, route);
 
-        expect(response.status).toBe(404);
-      }
-    );
+      expect(response.status).toBe(404);
+    });
 
     test('de bestaande contactgegeven-routes blijven bereikbaar', async () => {
       const router = await importRouter({ zaakvoorkeuren: false });
 
-      const response = await postToRouter(
-        router,
-        routes.CONTACTGEGEVEN_CREATE
-      );
+      const response = await postToRouter(router, routes.CONTACTGEGEVEN_CREATE);
 
       expect(response.status).toBe(200);
       expect(JSON.parse(response.text)).toEqual({ handler: 'create' });

@@ -69,7 +69,7 @@ export type ContactgegevenFrontend = {
   disabled?: boolean;
 };
 
-type ContactGegevenScopeSource = {
+export type ContactGegevenScopeSource = {
   dienstverlenerNaam: string;
   dienstNaam: string;
 };
@@ -106,9 +106,23 @@ export type ZaakKanaalVoorkeurPayloadFrontend = {
   value: string;
 };
 
+// Een keuze die voor alle zaken van een thema geldt. In de profielservice is dit een contactgegeven
+// met een scope (de dienst van het thema) en zonder referentie. Een keuze voor een zaak gaat voor.
+export type ThemaKanaalVoorkeurFrontend = {
+  themaId: string;
+  contactgegeven: ContactgegevenFrontend;
+};
+
+export type ThemaKanaalVoorkeurPayloadFrontend = {
+  themaId: string;
+  kanaal: ZaakKanaal;
+  value: string;
+};
+
 export type CommunicatievoorkeurenResponseFrontend = {
   standaardContactgegevens: ContactgegevenPerTypeFrontend | null;
   zaakKanaalVoorkeuren: ZaakKanaalVoorkeurFrontend[];
+  themaKanaalVoorkeuren?: ThemaKanaalVoorkeurFrontend[];
   aangeslotenDiensten?: DienstSource[];
 };
 

@@ -8,6 +8,7 @@ import type { ZaakVoorkeurThema } from './useZaakVoorkeurThemas.ts';
 import type {
   ContactgegevenFrontend,
   ContactgegevenPerTypeFrontend,
+  ThemaKanaalVoorkeurFrontend,
   ZaakKanaalVoorkeurFrontend,
 } from '../../../../../../../server/services/klantcontact/klantcontact-profieldienst-types.ts';
 import type { KlantcontactResponseData } from '../../../../../../../server/services/klantcontact/klantcontact.types.ts';
@@ -94,7 +95,19 @@ const smsVoorkeur = createVoorkeur(ZAAK_1, {
   value: '0612345678',
 });
 
-function setStateInStore(zaakKanaalVoorkeuren: ZaakKanaalVoorkeurFrontend[]) {
+const themaSmsVoorkeur: ThemaKanaalVoorkeurFrontend = {
+  themaId: 'ERFPACHT',
+  contactgegeven: createContactgegeven({
+    id: 'themaadres-1',
+    type: 'Telefoonnummer',
+    value: '0612345678',
+  }),
+};
+
+function setStateInStore(
+  zaakKanaalVoorkeuren: ZaakKanaalVoorkeurFrontend[],
+  themaKanaalVoorkeuren: ThemaKanaalVoorkeurFrontend[] = []
+) {
   useAppStateStore.setState({
     KLANT_CONTACT: {
       status: 'OK',
@@ -104,6 +117,7 @@ function setStateInStore(zaakKanaalVoorkeuren: ZaakKanaalVoorkeurFrontend[]) {
         communicatievoorkeuren: {
           standaardContactgegevens: getStandaardContactgegevens(),
           zaakKanaalVoorkeuren,
+          themaKanaalVoorkeuren,
         },
       },
     } as unknown as ApiResponse<KlantcontactResponseData>,
@@ -113,6 +127,11 @@ function setStateInStore(zaakKanaalVoorkeuren: ZaakKanaalVoorkeurFrontend[]) {
 function getZaakVoorkeurenInStore() {
   return useAppStateStore.getState().KLANT_CONTACT.content
     ?.communicatievoorkeuren?.zaakKanaalVoorkeuren;
+}
+
+function getThemaVoorkeurenInStore() {
+  return useAppStateStore.getState().KLANT_CONTACT.content
+    ?.communicatievoorkeuren?.themaKanaalVoorkeuren;
 }
 
 function setZaakvoorkeurenToggle(active: boolean) {
@@ -550,7 +569,7 @@ describe('CommunicatieVoorkeuren', () => {
         screen.getAllByText(
           /U heeft nog geen gevalideerd e-mailadres of mobiel telefoonnummer/
         )
-      ).toHaveLength(2); // één per zaak
+      ).toHaveLength(3); // één per zaak en één voor het thema
     });
 
     it('selecteert de bestaande voorkeur op kanaal en waarde, ook al heeft het zaakadres een ander id', async () => {
@@ -678,6 +697,196 @@ describe('CommunicatieVoorkeuren', () => {
       });
       expect(screen.queryByText('Voorkeur opgeslagen')).not.toBeInTheDocument();
       expect(getZaakVoorkeurenInStore()).toEqual([smsVoorkeur]);
+    });
+  });
+
+  describe('keuze voor het hele thema', () => {
+    async function openModal(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(
+        within(getErfpachtRow()).getByRole('button', { name: 'wijzig' })
+      );
+    }
+
+    function getThemaForm() {
+      const group = screen.getByRole('group', {
+        name: 'Alle zaken van Erfpacht',
+      });
+      return { group, form: group.closest('form') as HTMLFormElement };
+    }
+
+    beforeEach(() => {
+      setZaakvoorkeurenToggle(true);
+    });
+
+    it('selecteert de themakeuze ook als de BFF het nummer als +31 teruggeeft', async () => {
+      const user = userEvent.setup();
+      renderCommunicatieVoorkeuren({
+        zaakThemas,
+        themaKanaalVoorkeuren: [
+          {
+            ...themaSmsVoorkeur,
+            contactgegeven: {
+              ...themaSmsVoorkeur.contactgegeven,
+              value: '+31612345678',
+            },
+          },
+        ],
+      });
+      await openModal(user);
+
+      const { group, form } = getThemaForm();
+      expect(
+        within(group).getByRole('radio', { name: 'SMS: 0612345678' })
+      ).toBeChecked();
+      expect(
+        within(form).getByRole('button', { name: 'Opslaan' })
+      ).toBeDisabled();
+    });
+
+    it('toont in de tabel de themakeuze voor zaken zonder eigen keuze', () => {
+      renderCommunicatieVoorkeuren({
+        zaakThemas,
+        themaKanaalVoorkeuren: [themaSmsVoorkeur],
+      });
+
+      const cellen = within(getErfpachtRow()).getAllByRole('cell');
+      expect(cellen[2]).toHaveTextContent(/^sms: 0612345678/);
+      expect(cellen[2]).not.toHaveTextContent('standaard');
+    });
+
+    it('toont boven de zaken een keuze voor het hele thema', async () => {
+      const user = userEvent.setup();
+      renderCommunicatieVoorkeuren({ zaakThemas });
+      await openModal(user);
+
+      const { group } = getThemaForm();
+      expect(
+        within(group)
+          .getAllByRole('radio')
+          .map((radio) => radio.getAttribute('value'))
+      ).toEqual(['standaard', 'Email', 'Telefoonnummer']);
+    });
+
+    it('zet de themakeuze met de payload die de BFF verwacht en bewaart het antwoord', async () => {
+      const user = userEvent.setup();
+      const setThema = bffApi
+        .post('/services/klantcontact/themavoorkeur/set', {
+          themaId: 'ERFPACHT',
+          kanaal: 'Telefoonnummer',
+          value: '0612345678',
+        })
+        .reply(200, { status: 'OK', content: themaSmsVoorkeur });
+
+      renderCommunicatieVoorkeuren({ zaakThemas });
+      await openModal(user);
+
+      const { group, form } = getThemaForm();
+      await user.click(
+        within(group).getByRole('radio', { name: 'SMS: 0612345678' })
+      );
+      await user.click(within(form).getByRole('button', { name: 'Opslaan' }));
+
+      await waitFor(() => {
+        expect(setThema.isDone()).toBe(true);
+        expect(screen.getByText('Voorkeur opgeslagen')).toBeInTheDocument();
+      });
+      expect(getThemaVoorkeurenInStore()).toEqual([themaSmsVoorkeur]);
+    });
+
+    it('verwijdert de themakeuze als de gebruiker terugkeert naar standaard', async () => {
+      const user = userEvent.setup();
+      setStateInStore([], [themaSmsVoorkeur]);
+      const deleteThema = bffApi
+        .post('/services/klantcontact/themavoorkeur/delete', {
+          themaId: 'ERFPACHT',
+        })
+        .reply(200, { status: 'OK', content: null });
+
+      renderCommunicatieVoorkeuren({
+        zaakThemas,
+        themaKanaalVoorkeuren: [themaSmsVoorkeur],
+      });
+      await openModal(user);
+
+      const { group, form } = getThemaForm();
+      expect(
+        within(group).getByRole('radio', { name: 'SMS: 0612345678' })
+      ).toBeChecked();
+      await user.click(
+        within(group).getByRole('radio', {
+          name: 'Standaardinstelling gebruiken',
+        })
+      );
+      await user.click(within(form).getByRole('button', { name: 'Opslaan' }));
+
+      await waitFor(() => {
+        expect(deleteThema.isDone()).toBe(true);
+        expect(screen.getByText('Voorkeur opgeslagen')).toBeInTheDocument();
+      });
+      expect(getThemaVoorkeurenInStore()).toEqual([]);
+    });
+
+    it('toont een foutmelding en behoudt de themakeuze als de BFF weigert', async () => {
+      const user = userEvent.setup();
+      setStateInStore([], [themaSmsVoorkeur]);
+      const setThema = bffApi
+        .post('/services/klantcontact/themavoorkeur/set')
+        .reply(500, { status: 'ERROR', message: 'mislukt', content: null });
+
+      renderCommunicatieVoorkeuren({
+        zaakThemas,
+        themaKanaalVoorkeuren: [themaSmsVoorkeur],
+      });
+      await openModal(user);
+
+      const { group, form } = getThemaForm();
+      await user.click(
+        within(group).getByRole('radio', { name: 'E-mail: test@example.com' })
+      );
+      await user.click(within(form).getByRole('button', { name: 'Opslaan' }));
+
+      await waitFor(() => {
+        expect(setThema.isDone()).toBe(true);
+        expect(screen.getByText('Opslaan mislukt')).toBeInTheDocument();
+      });
+      expect(getThemaVoorkeurenInStore()).toEqual([themaSmsVoorkeur]);
+    });
+
+    it('toont per zaak dat de themakeuze geldt, en laat de zaak die keuze volgen', async () => {
+      const user = userEvent.setup();
+      renderCommunicatieVoorkeuren({
+        zaakThemas,
+        themaKanaalVoorkeuren: [themaSmsVoorkeur],
+      });
+      await openModal(user);
+
+      const group = screen.getByRole('group', { name: new RegExp(ZAAK_1) });
+      expect(
+        within(group.closest('form') as HTMLFormElement).getByText(
+          /Huidige keuze: SMS: 0612345678 \(ingesteld voor het hele thema\)/
+        )
+      ).toBeVisible();
+      expect(
+        within(group).getByRole('radio', {
+          name: 'De keuze voor het hele thema volgen',
+        })
+      ).toBeChecked();
+    });
+
+    it('laat de keuze voor een zaak voorgaan op de themakeuze in de tabel', () => {
+      const emailVoorkeur = createVoorkeur(ZAAK_1, {
+        type: 'Email',
+        value: 'test@example.com',
+      });
+      renderCommunicatieVoorkeuren({
+        zaakThemas,
+        zaakKanaalVoorkeuren: [emailVoorkeur],
+        themaKanaalVoorkeuren: [themaSmsVoorkeur],
+      });
+
+      expect(getErfpachtRow()).toHaveTextContent(
+        'e-mail: test@example.com, sms: 0612345678'
+      );
     });
   });
 });

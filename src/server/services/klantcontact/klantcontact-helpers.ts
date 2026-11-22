@@ -4,6 +4,7 @@ import type {
   ContactgegevenSource,
   ContactgegevenType,
   IdentificatieType,
+  ThemaKanaalVoorkeurFrontend,
   ZaakKanaal,
   ZaakKanaalVoorkeurFrontend,
 } from './klantcontact-profieldienst-types.ts';
@@ -105,6 +106,69 @@ export function getZaakKanaalVoorkeuren(
         contactgegeven.type
       ),
     }));
+}
+
+// Het thema waarvoor een contactgegeven een keuze is, volgens de scopes in de config van de gemeente.
+// Een contactgegeven met een referentie is een zaakadres en hoort niet bij een thema.
+export function getThemaId(
+  config: GemeenteKlantcontactConfig,
+  contactgegeven: ContactgegevenSource
+): string | null {
+  if (!config.themaVoorkeur || hasReferentie(contactgegeven)) {
+    return null;
+  }
+
+  const { scopes } = config.themaVoorkeur;
+
+  return (
+    Object.keys(scopes).find((themaId) =>
+      contactgegeven.scopes.some(
+        (scope) => scope.dienst.id === scopes[themaId].dienstNaam
+      )
+    ) ?? null
+  );
+}
+
+export function getThemaKanaalVoorkeuren(
+  config: GemeenteKlantcontactConfig,
+  contactgegevens: ApiResponse<ContactgegevenSource[]>
+): ThemaKanaalVoorkeurFrontend[] {
+  if (contactgegevens.status !== 'OK') {
+    return [];
+  }
+
+  return contactgegevens.content.flatMap((contactgegeven) => {
+    const themaId = getThemaId(config, contactgegeven);
+
+    return themaId && isZaakKanaal(contactgegeven.type)
+      ? [
+          {
+            themaId,
+            contactgegeven: transformContactgegevenSource(
+              contactgegeven,
+              contactgegeven.type
+            ),
+          },
+        ]
+      : [];
+  });
+}
+
+// Een keuze voor een thema is geen standaardadres van de klant.
+export function withoutThemaContactgegevens(
+  config: GemeenteKlantcontactConfig,
+  contactgegevens: ApiResponse<ContactgegevenSource[]>
+): ApiResponse<ContactgegevenSource[]> {
+  if (contactgegevens.status !== 'OK') {
+    return contactgegevens;
+  }
+
+  return {
+    ...contactgegevens,
+    content: contactgegevens.content.filter(
+      (contactgegeven) => !getThemaId(config, contactgegeven)
+    ),
+  };
 }
 
 export function getMostRecentByContactgegevenType(

@@ -18,6 +18,8 @@ export const routes = {
   CONTACTGEGEVEN_DELETE: `${BASE_ROUTE}/contactgegeven/delete`,
   ZAAKVOORKEUR_SET: `${BASE_ROUTE}/zaakvoorkeur/set`,
   ZAAKVOORKEUR_DELETE: `${BASE_ROUTE}/zaakvoorkeur/delete`,
+  THEMAVOORKEUR_SET: `${BASE_ROUTE}/themavoorkeur/set`,
+  THEMAVOORKEUR_DELETE: `${BASE_ROUTE}/themavoorkeur/delete`,
 } as const;
 
 export const salesforceDataRequestConfig = {
@@ -36,6 +38,14 @@ export function getAmsterdamKlantcontactConfig(): GemeenteKlantcontactConfig {
     zaakVoorkeur: {
       referentie: zaakIdentificatieAlsReferentie,
       kanalen: ['Email', 'Telefoonnummer'],
+    },
+    // Een keuze voor alle zaken van een thema. Nu alleen Erfpacht, net als de zaakvoorkeur in het scherm.
+    // De dienstnamen volgen de profielservice (dienstverlener `amsterdam`).
+    themaVoorkeur: {
+      kanalen: { ERFPACHT: ['Email', 'Sms'] },
+      scopes: {
+        ERFPACHT: { dienstverlenerNaam: 'amsterdam', dienstNaam: 'erfpacht' },
+      },
     },
   };
 }

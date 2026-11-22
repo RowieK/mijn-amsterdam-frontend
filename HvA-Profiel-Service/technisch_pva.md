@@ -153,6 +153,23 @@ Uitgangspunten:
 - **Alleen geverifieerde adressen.** De BFF controleert dit, niet alleen de UI.
 - **Feature toggle** `KLANT_CONTACT.zaakvoorkeuren` (nieuw, in `src/server/config/feature-toggles.ts`, aan buiten productie).
 
+### Ontwerp van de themavoorkeur
+
+Een gebruiker kan zijn kanaal ook voor een heel thema instellen, zodat hij niet bij elke zaak opnieuw hoeft te kiezen.
+
+- **Voorrang: zaak, dan thema, dan standaard.** `bepaalEffectieveVoorkeur` (`klantcontact-thema-voorkeur.ts`) is pure logica en bepaalt per zaak welk niveau geldt. De UI toont dat niveau ("ingesteld voor het hele thema") en de zaakkeuze kan de themakeuze volgen.
+- **Een themakeuze is een contactgegeven met een `scope` en zonder `referentie`.** De profielservice kent al `scopes` (`{ dienstverlenerNaam, dienstNaam }`). `createContactgegeven` stuurt de scope mee. Een adres met `referentie` is een zaakkeuze, een adres met alleen een scope is een themakeuze, de rest is een standaardadres. `getThemaId` leest dat onderscheid uit de config (`themaVoorkeur.scopes`).
+- **Themakeuzes tellen niet als standaardadres.** `fetchCommunicatievoorkeuren` haalt ze uit `standaardContactgegevens` (`withoutThemaContactgegevens`) en geeft ze apart terug als `themaKanaalVoorkeuren`, anders verschijnt een themaadres onder "Mijn contactgegevens".
+- **Per thema maximaal één adres.** Net als bij een zaak: eerst het nieuwe adres aanmaken, dan het oude verwijderen (`setThemaKanaalVoorkeur`).
+- **Welke kanalen per thema** staat in de config (`themaVoorkeur.kanalen`, hergebruik van `validateScopeKeuze` uit #39: maximaal één kanaal, privacy by default). `Telefoonnummer` hoort bij het scopekanaal `Sms`.
+- **Alleen een geverifieerd standaardadres van de gebruiker** mag als themakeuze dienen. De BFF controleert dit, niet alleen de UI.
+- **Routes:** `POST /services/klantcontact/themavoorkeur/set` en `/delete`, achter dezelfde feature toggle als de zaakvoorkeuren (`KLANT_CONTACT.zaakvoorkeuren`). Er is geen zaakcontrole nodig, want een thema is geen zaak.
+
+Aannames die nog bevestigd moeten worden:
+
+- **`dienstNaam` van Erfpacht is `erfpacht`.** Dat is een aanname in de Amsterdam-config en moet overeenkomen met hoe de profielservice de dienst noemt.
+- **Of de OMC de themakeuze gebruikt.** De OMC kiest een adres via `referentie`, dan `voorkeursDigitaalAdres`, dan `isStandaardAdres`. Er is geen themaniveau. Een themakeuze heeft dus alleen effect op notificaties als de OpenKlant-extensie van de keten de scope meeleest. Dit is nog niet bevestigd (open punt hieronder).
+
 ## 5. Werkpakketten
 
 ### WP0: Afstemming (blokkerend)
@@ -348,6 +365,8 @@ Nieuwe aandachtspunten uit de specs en docs:
 - **OMC-eisen per gemeente (open punt 12):** OpenKlant 2.12.0 of hoger (sinds OMC v1.17.0), `OMC_FEATURE_WORKFLOW_VERSION=2` voor OpenKlant 2 en ondernemers (KVK), en `ZGW_AUTH_KEY_OPENKLANT`. De docs-changelog stopt bij v2.0.0 en de analyse in sectie 3 gaat uit van v.2.3.2, dus de docs lopen achter op de code.
 - **Oudere OMC-versies zijn strenger.** Volgens de changelog (v1.17.2) is zonder `voorkeursAdres` een digitale verwijzing naar de zaak nodig om te kunnen versturen. In v.2.3.2 volgt daarna nog `isStandaardAdres`. Een gemeente met een oudere OMC kan dus zonder terugval op het standaardadres zitten. Dat is een extra reden om de OMC-versie per gemeente vast te stellen.
 - **Notify NL heeft geen aparte testomgeving** ("Alle tests vinden plaats in de productieomgeving"). Een testsleutel levert status `delivered` zonder iets te versturen. Voor de ketentest met echte sms is een sleutel voor team en gastlijst nodig (teamleden plus maximaal 5 gasten).
+
+- **Themakeuze (story #69): leest de keten de scope?** De OMC kent geen themaniveau. Vraag aan de ketenpartner hoe de OpenKlant-extensie een adres met `scope` opslaat en leest, en wat de `dienstNaam` voor Erfpacht is. Zonder dat kan de themakeuze in Mijn Amsterdam wel worden opgeslagen, maar heeft hij mogelijk geen effect op de notificaties (risico "keuze zonder effect", sectie 8).
 
 - **`zaakIsVanGebruiker` (WP5) is in OpenZaak uit te drukken met een filter.** `GET /rollen?zaak=…&betrokkeneIdentificatie__natuurlijkPersoon__inpBsn=…` (of `…nietNatuurlijkPersoon__kvkNummer` / `…vestiging__kvkNummer` voor ondernemers), of `GET /zaken?identificatie=…&bronorganisatie=…&rol__betrokkeneIdentificatie__natuurlijkPersoon__inpBsn=…`. Zonder `bronorganisatie` kan een identificatie meerdere zaken opleveren. Dat moet de check afvangen.
 - **Telefoonnummers: OpenKlant accepteert ook vaste nummers.** Het patroon is `^(0[1-9][0-9]{8}|\+[0-9]{9,15}|00[0-9]{7,13})$` (0800, 0900, 088 en 14xx zijn uitgesloten). "Alleen mobiel" (WP4) is dus een eigen regel in `ValueInputAndValidation.tsx` en niet iets dat OpenKlant afdwingt.

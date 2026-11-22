@@ -1,7 +1,10 @@
 import { isAfter } from 'date-fns';
 
 import { fetchAfspraken } from './klantcontact-afspraken.ts';
-import { klantcontactBackend } from './klantcontact-backend.ts';
+import {
+  klantcontactBackend,
+  klantcontactConfig,
+} from './klantcontact-backend.ts';
 import { fetchCommunicatievoorkeuren } from './klantcontact-communicatievoorkeuren.ts';
 import { fetchContactmomenten } from './klantcontact-contactmomenten.ts';
 import type {
@@ -28,7 +31,11 @@ export async function fetchKlantcontact(
   ] = await Promise.allSettled([
     fetchAfspraken(authProfileAndToken),
     fetchContactmomenten(authProfileAndToken),
-    fetchCommunicatievoorkeuren(authProfileAndToken, klantcontactBackend),
+    fetchCommunicatievoorkeuren(
+      authProfileAndToken,
+      klantcontactBackend,
+      klantcontactConfig
+    ),
   ]);
 
   const afsprakenSettled = getSettledResult(afsprakenResponse);
