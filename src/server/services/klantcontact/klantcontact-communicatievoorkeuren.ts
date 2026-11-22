@@ -251,6 +251,9 @@ export async function deleteThemaKanaalVoorkeur(
 
 // Vervangt de voorkeur voor één zaak. Eerst het nieuwe adres aanmaken en dan pas de oude
 // verwijderen, zodat er nooit een moment is zonder zaakadres en een fout het oude adres laat staan.
+// Faalt het verwijderen van een oud adres, dan wordt het nieuwe adres weer verwijderd (terugdraaien).
+// Faalt ook dat, dan volgt een foutresultaat; de volgende keuze voor dezelfde zaak ruimt alle adressen
+// met die referentie op.
 // Het nieuwe adres is ongeverifieerd (createContactgegeven stuurt een verificatiecode).
 // Contactgegevens (waarde) komen niet in foutmeldingen of logs.
 export async function setZaakKanaalVoorkeur(
@@ -302,6 +305,20 @@ export async function setZaakKanaalVoorkeur(
   );
 
   if (deleteResponses.some((response) => response.status !== 'OK')) {
+    // Terugdraaien: anders staan er twee adressen met dezelfde referentie en kiest de OMC er onvoorspelbaar
+    // een van. Het oude adres of de oude adressen blijven dan de keuze.
+    const nieuwId = nieuwContactgegeven.content.id;
+    const terugdraaien = nieuwId
+      ? await backend.deleteContactgegeven(authProfileAndToken, nieuwId)
+      : null;
+
+    if (terugdraaien?.status !== 'OK') {
+      return apiErrorResult(
+        'Wijzigen van de zaakvoorkeur mislukt en terugdraaien is niet gelukt. Probeer het later opnieuw',
+        null
+      );
+    }
+
     return apiErrorResult('Verwijderen van de oude zaakvoorkeur mislukt', null);
   }
 

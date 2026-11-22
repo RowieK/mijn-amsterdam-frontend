@@ -206,6 +206,179 @@ describe('setZaakKanaalVoorkeur', () => {
     expect(result.status).toBe('ERROR');
   });
 
+  describe('mislukte vervanging terugdraaien', () => {
+    const OUDE_WAARDE = 'oud@example.org';
+
+    function getBackendMetOudAdres(
+      deleteContactgegeven: KlantcontactBackend['deleteContactgegeven']
+    ) {
+      return getBackend({
+        fetchContactgegevens: vi.fn().mockResolvedValue(
+          apiSuccessResult([
+            getContactgegeven({
+              id: 'oud',
+              waarde: OUDE_WAARDE,
+              referentie: ZAAK,
+              isDefault: false,
+            }),
+          ])
+        ),
+        deleteContactgegeven,
+      });
+    }
+
+    test('verwijdert het nieuwe adres weer als het verwijderen van het oude adres faalt', async () => {
+      const deleteContactgegeven = vi.fn(async (_auth: unknown, id: string) =>
+        id === 'oud'
+          ? apiErrorResult('Verwijderen mislukt', null)
+          : apiSuccessResult(null)
+      );
+      const backend = getBackendMetOudAdres(
+        deleteContactgegeven as unknown as KlantcontactBackend['deleteContactgegeven']
+      );
+
+      const result = await setZaakKanaalVoorkeur(
+        authProfileAndToken,
+        backend,
+        config,
+        payload
+      );
+
+      expect(result).toEqual(
+        apiErrorResult('Verwijderen van de oude zaakvoorkeur mislukt', null)
+      );
+      expect(backend.deleteContactgegeven).toHaveBeenCalledWith(
+        authProfileAndToken,
+        'nieuw'
+      );
+    });
+
+    test('draait pas terug nadat het verwijderen van het oude adres is geprobeerd', async () => {
+      const deleteContactgegeven = vi.fn(async (_auth: unknown, id: string) =>
+        id === 'oud'
+          ? apiErrorResult('Verwijderen mislukt', null)
+          : apiSuccessResult(null)
+      );
+      const backend = getBackendMetOudAdres(
+        deleteContactgegeven as unknown as KlantcontactBackend['deleteContactgegeven']
+      );
+
+      await setZaakKanaalVoorkeur(
+        authProfileAndToken,
+        backend,
+        config,
+        payload
+      );
+
+      expect(
+        vi.mocked(backend.deleteContactgegeven).mock.calls.map(([, id]) => id)
+      ).toEqual(['oud', 'nieuw']);
+    });
+
+    test('geeft een duidelijke fout zonder contactgegevens als het terugdraaien ook faalt', async () => {
+      const backend = getBackendMetOudAdres(
+        vi.fn().mockResolvedValue(apiErrorResult('Verwijderen mislukt', null))
+      );
+
+      const result = await setZaakKanaalVoorkeur(
+        authProfileAndToken,
+        backend,
+        config,
+        payload
+      );
+
+      expect(result.status).toBe('ERROR');
+      expect(result.content).toBeNull();
+      expect(JSON.stringify(result)).toContain('terugdraaien');
+      expect(JSON.stringify(result)).not.toContain(NIEUWE_WAARDE);
+      expect(JSON.stringify(result)).not.toContain(OUDE_WAARDE);
+    });
+
+    test('draait ook terug als maar een van meerdere oude adressen niet verwijderd kan worden', async () => {
+      const deleteContactgegeven = vi.fn(async (_auth: unknown, id: string) =>
+        id === 'oud-2'
+          ? apiErrorResult('Verwijderen mislukt', null)
+          : apiSuccessResult(null)
+      );
+      const backend = getBackend({
+        fetchContactgegevens: vi
+          .fn()
+          .mockResolvedValue(
+            apiSuccessResult([
+              getContactgegeven({ id: 'oud-1', referentie: ZAAK }),
+              getContactgegeven({ id: 'oud-2', referentie: ZAAK }),
+            ])
+          ),
+        deleteContactgegeven:
+          deleteContactgegeven as unknown as KlantcontactBackend['deleteContactgegeven'],
+      });
+
+      const result = await setZaakKanaalVoorkeur(
+        authProfileAndToken,
+        backend,
+        config,
+        payload
+      );
+
+      expect(result.status).toBe('ERROR');
+      expect(backend.deleteContactgegeven).toHaveBeenCalledWith(
+        authProfileAndToken,
+        'nieuw'
+      );
+    });
+
+    test('draait niet terug als alle oude adressen zijn verwijderd', async () => {
+      const backend = getBackendMetOudAdres(
+        vi.fn().mockResolvedValue(apiSuccessResult(null))
+      );
+
+      const result = await setZaakKanaalVoorkeur(
+        authProfileAndToken,
+        backend,
+        config,
+        payload
+      );
+
+      expect(result.status).toBe('OK');
+      expect(backend.deleteContactgegeven).not.toHaveBeenCalledWith(
+        authProfileAndToken,
+        'nieuw'
+      );
+    });
+
+    test('de volgende keuze voor dezelfde zaak ruimt alle adressen met die referentie op, ook een achtergebleven adres', async () => {
+      const backend = getBackend({
+        fetchContactgegevens: vi.fn().mockResolvedValue(
+          apiSuccessResult([
+            getContactgegeven({ id: 'standaard' }),
+            getContactgegeven({ id: 'oud', referentie: ZAAK }),
+            getContactgegeven({
+              id: 'achtergebleven',
+              referentie: ZAAK,
+              isGeverifieerd: false,
+            }),
+            getContactgegeven({ id: 'andere-zaak', referentie: 'Z-24-1' }),
+          ])
+        ),
+      });
+
+      const result = await setZaakKanaalVoorkeur(
+        authProfileAndToken,
+        backend,
+        config,
+        payload
+      );
+
+      expect(result.status).toBe('OK');
+      expect(
+        vi
+          .mocked(backend.deleteContactgegeven)
+          .mock.calls.map(([, id]) => id)
+          .toSorted()
+      ).toEqual(['achtergebleven', 'oud']);
+    });
+  });
+
   test('verwijdert alle oude adressen met dezelfde referentie (duplicaten)', async () => {
     const backend = getBackend({
       fetchContactgegevens: vi.fn().mockResolvedValue(
@@ -435,11 +608,13 @@ describe('deleteZaakKanaalVoorkeur', () => {
       },
     };
     const backend = getBackend({
-      fetchContactgegevens: vi.fn().mockResolvedValue(
-        apiSuccessResult([
-          getContactgegeven({ id: 'zaakadres', referentie: 'Z-24-1' }),
-        ])
-      ),
+      fetchContactgegevens: vi
+        .fn()
+        .mockResolvedValue(
+          apiSuccessResult([
+            getContactgegeven({ id: 'zaakadres', referentie: 'Z-24-1' }),
+          ])
+        ),
     });
 
     const result = await deleteZaakKanaalVoorkeur(
