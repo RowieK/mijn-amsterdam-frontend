@@ -226,6 +226,54 @@ describe('KlantContactThema', () => {
         originalToggles.zaakvoorkeuren;
     });
 
+    test('shows the default email and phone number without zaken', () => {
+      const email = 'test@example.com';
+      const phoneNumber = '0612345678';
+      const state = {
+        ...getState({
+          communicatievoorkeuren: {
+            standaardContactgegevens: {
+              Email: {
+                id: 'email-1',
+                type: 'Email',
+                value: email,
+                isVerified: true,
+                dateModified: null,
+                dateModifiedFormatted: null,
+              },
+              Telefoonnummer: {
+                id: 'telefoon-1',
+                type: 'Telefoonnummer',
+                value: phoneNumber,
+                isVerified: true,
+                dateModified: null,
+                dateModifiedFormatted: null,
+              },
+            },
+            zaakKanaalVoorkeuren: [],
+          },
+        }),
+        ERFPACHT: {
+          status: 'OK',
+          content: { dossiers: { dossiers: [] }, zaken: [] },
+        },
+      } as unknown as AppState;
+
+      const KlantContactThema = createMijnContactThemaComponent(state);
+      const screen = render(<KlantContactThema />);
+      const defaultRow = within(
+        screen.getByRole('table', {
+          name: 'Mijn communicatievoorkeuren per thema',
+        })
+      ).getByRole('row', { name: /Standaard instelling/ });
+
+      expect(defaultRow).toHaveTextContent(email);
+      expect(defaultRow).toHaveTextContent(phoneNumber);
+      expect(
+        screen.queryByRole('heading', { name: 'Foutmelding' })
+      ).not.toBeInTheDocument();
+    });
+
     test('shows Erfpacht with its zaken as a thema, following the standaardinstelling by default', () => {
       const KlantContactThema = createMijnContactThemaComponent(
         getStateWithErfpachtZaak([])
