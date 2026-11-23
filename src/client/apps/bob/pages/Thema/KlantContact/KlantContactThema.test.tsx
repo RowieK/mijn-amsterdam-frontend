@@ -274,6 +274,40 @@ describe('KlantContactThema', () => {
       ).not.toBeInTheDocument();
     });
 
+    test('shows an error when the profile request fails without zaken', () => {
+      const state = {
+        ...getState({
+          communicatievoorkeuren: null,
+          failedDependencies: {
+            communicatievoorkeuren: {
+              status: 'ERROR',
+              message: 'Ophalen van het communicatieprofiel mislukt',
+              content: null,
+            },
+          },
+        }),
+        ERFPACHT: {
+          status: 'OK',
+          content: { dossiers: { dossiers: [] }, zaken: [] },
+        },
+      } as unknown as AppState;
+
+      const KlantContactThema = createMijnContactThemaComponent(state);
+      const screen = render(<KlantContactThema />);
+      const errorSection = screen
+        .getByRole('heading', { name: 'Foutmelding' })
+        .closest('section');
+
+      expect(errorSection).toHaveTextContent(
+        'Uw overzicht van communicatievoorkeuren'
+      );
+      expect(
+        screen.queryByRole('table', {
+          name: 'Mijn communicatievoorkeuren per thema',
+        })
+      ).not.toBeInTheDocument();
+    });
+
     test('shows Erfpacht with its zaken as a thema, following the standaardinstelling by default', () => {
       const KlantContactThema = createMijnContactThemaComponent(
         getStateWithErfpachtZaak([])
