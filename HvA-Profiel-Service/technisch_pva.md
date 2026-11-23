@@ -242,7 +242,7 @@ Validatie in `handleSetZaakKanaalVoorkeur`:
 **Stand van WP5.**
 
 - Toggle `KLANT_CONTACT.zaakvoorkeuren` (aan buiten productie) zit op een eigen sub-router in `klantcontact-router.ts`. Staat hij uit, dan zijn `ZAAKVOORKEUR_SET` en `ZAAKVOORKEUR_DELETE` niet bereikbaar; de bestaande contactgegeven-routes blijven werken.
-- `zaakIsVanGebruiker` zit in `KlantcontactBackend`. De `profielservice`-adapter kan het eigenaarschap nog niet vaststellen (de profielservice kent geen zaken en er is geen OpenZaak-service, zie WP8) en geeft daarom een foutresultaat (503). `handleSetZaakKanaalVoorkeur` weigert dan: **het zetten van een zaakvoorkeur werkt pas als WP8 een echte controle levert.** Dit is bewust fail closed. De controle zelf is dan een OpenZaak-aanroep (zie "Uitkomst API-specificaties").
+- `zaakIsVanGebruiker` zit in `KlantcontactBackend`. Sinds WP8 controleren beide adapters het eigenaarschap in OpenZaak (`zaakIsVanGebruiker` in `src/server/services/openzaak/openzaak-api-service.ts`): de burger moet de initiator van de zaak zijn, anders weigert `handleSetZaakKanaalVoorkeur` met een 403. Is OpenZaak niet geconfigureerd of niet bereikbaar, dan weigert hij met een 503. Dit is bewust fail closed.
 - `handleDeleteZaakKanaalVoorkeur` controleert het eigenaarschap niet. Verwijderen raakt alleen adressen in het eigen profiel van de klant, dus er valt geen andermans zaak mee om te leiden. `deleteZaakKanaalVoorkeur` ruimt alle adressen met die `referentie` op en is een succes als er niets te verwijderen valt.
 
 ### WP6: Mock-server
@@ -259,18 +259,37 @@ Nieuwe route in `src/mocks-server/routes/` voor `/profielservice` (`/partij`, `/
 
 **Stand van WP7.**
 
-- De keuze zit op de pagina Mijn contact (`/mijn-contact`), volgens `HvA-Profiel-Service/wireframe_2.png`, en niet op de zaakdetailpagina. De tabel heeft de kolommen Thema, Bericht locaties en Notificaties ontvangen op. Een thema-rij toont 'standaard' en de gekozen kanalen van de zaken in dat thema; 'wijzig' opent per zaak de keuze (`ZaakKanaalVoorkeur`). De thema's met zaken komen uit `useZaakVoorkeurThemas`, nu alleen Erfpacht. Een volgend thema komt in die hook.
-- Client en BFF delen het formaat. `setZaakKanaalVoorkeur` geeft `ZaakKanaalVoorkeurFrontend` (`{ zaakIdentificatie, contactgegeven }`). De client vervangt daarmee de lijst `KLANT_CONTACT.communicatievoorkeuren.zaakKanaalVoorkeuren` (`mergeAppState` voegt arrays per index samen, dus de lijst wordt met `setAppState` vervangen). De zaakidentificatie in de tabel is het `zaakNummer` uit de Erfpacht-state, dezelfde waarde die de BFF als `referentie` opslaat.
+- De keuze zit op de pagina Mijn contact (`/mijn-contact`), volgens `HvA-Profiel-Service/wireframe_2.png`, en niet op de zaakdetailpagina. De tabel heeft de kolommen Thema, Bericht locaties en Notificaties ontvangen op. Een thema-rij toont 'standaard' en de gekozen kanalen van de zaken in dat thema; 'wijzig' opent per zaak de keuze (`ZaakKanaalVoorkeur`). De thema's met zaken komen uit `useZaakVoorkeurThemas`. Sinds WP8 is dat één thema per zaaktype uit OpenZaak; Erfpacht staat er niet meer in (zie 'Stand van WP8').
+- Client en BFF delen het formaat. `setZaakKanaalVoorkeur` geeft `ZaakKanaalVoorkeurFrontend` (`{ zaakIdentificatie, contactgegeven }`). De client vervangt daarmee de lijst `KLANT_CONTACT.communicatievoorkeuren.zaakKanaalVoorkeuren` (`mergeAppState` voegt arrays per index samen, dus de lijst wordt met `setAppState` vervangen). De zaakidentificatie in de tabel is `zaak.identificatie` uit OpenZaak, dezelfde waarde die de BFF als `referentie` opslaat.
 - De voorselectie vergelijkt kanaal en waarde, niet het id: het zaakadres is een eigen record (met `referentie`) en heeft dus een ander id dan het standaardadres.
 - Elke zaak heeft een eigen `useBffApi`-cacheKey. Anders delen alle zaken op de pagina `isLoading` en `isError`.
 - De toggle `KLANT_CONTACT.zaakvoorkeuren` geldt ook in de client: zonder toggle toont de tabel geen 'wijzig' bij een thema.
 - 'Bericht locaties' is alleen-lezen ('standaard'): WP1 tot en met WP6 hebben daar geen gegevens voor. De Berichtenbox heeft geen koppelactie, omdat de profielservice hem nog niet ondersteunt (de BFF zet hem op `disabled`).
 - `useCommunicatieVoorkeurBevestigen` (de stub met `console.info`) en de checkbox 'Post per e-mail' zijn vervangen door de tabel.
-- **Het zetten van een voorkeur werkt pas als WP8 een echte `zaakIsVanGebruiker` levert.** Die geeft nu een 503 (zie 'Stand van WP5'), dus de UI toont 'Opslaan mislukt'. Terugkeren naar 'standaard' (verwijderen) werkt wel, want dat controleert het eigenaarschap niet.
+- Het zetten van een voorkeur werkt sinds WP8, want `zaakIsVanGebruiker` controleert nu echt in OpenZaak (zie 'Stand van WP5'). Terugkeren naar 'standaard' (verwijderen) controleert het eigenaarschap niet.
 
 ### WP8: Zaken uit OpenZaak (afhankelijkheid)
 
 De keuze werkt alleen voor zaken die in OpenZaak staan. Kies samen met het team één thema waarvan de zaken (ook) in OpenZaak staan en controleer dat de identificatie in Mijn Amsterdam gelijk is aan `zaak.identificatie` in OpenZaak. Staat er nog geen enkel thema in OpenZaak, dan is een nieuwe OpenZaak-service in `src/server/services/` nodig. Dat is een apart traject.
+
+**Stand van WP8.**
+
+- Er stond geen bestaand thema van Mijn Amsterdam in OpenZaak. Daarom is het aparte traject gebouwd: `src/server/services/openzaak/`. De zaken op Mijn contact komen rechtstreeks uit OpenZaak, dus de identificatie is altijd gelijk aan `zaak.identificatie`.
+- **Zaken.** `fetchZakenVanGebruiker` haalt de zaken op waarvan de burger de initiator is: op bronorganisatie en BSN, met `expand=rollen`. De initiator controleren we zelf op de rollen, want het BSN-filter en het rolfilter hoeven niet dezelfde rol te treffen. Alleen open zaken komen in de tabel.
+- **Alle pagina's.** `requestAllPages` in `src/server/helpers/zgw-api-helpers.ts` volgt `next` tot de laatste pagina, zonder vast maximum. Mislukt een pagina, dan volgt een fout en geen halve lijst. `next` wordt alleen gevolgd naar dezelfde host. Dit geldt voor de zaken, de rollen bij de eigenaarscontrole en het zoeken van de partij in OpenKlant.
+- **Thema's.** Per zaak haalt de BFF het zaaktype op uit de Catalogi API van hetzelfde OpenZaak (`fetchZaaktypen`, scope `catalogi.lezen`). `useZaakVoorkeurThemas` maakt van elk zaaktype een thema; versies van een zaaktype (zelfde identificatie) vallen onder één thema. Is het zaaktype niet op te halen, dan komt de zaak onder het thema "Zaken". Het token gaat alleen naar de host van OpenZaak.
+- **Eigenaarscontrole.** Zie 'Stand van WP5'. De zaak wordt gezocht op identificatie én bronorganisatie (`BFF_OPENZAAK_BRONORGANISATIE`), omdat een identificatie alleen uniek is binnen één organisatie (open punt 5).
+- **Erfpacht is uit de tabel.** De zaken van Erfpacht komen uit Vernise en niet uit OpenZaak, dus de eigenaarscontrole zou een keuze altijd weigeren. Daarmee is het risico 'Keuze zonder effect' (sectie 8) afgedekt.
+- **Testomgeving (23 november 2026).**
+  - Fase 2 werkt: in OpenKlant staat voor de testpersoon een adres met `referentie ZAAK-2026-0000000172`.
+  - De catalogus heeft alleen testzaaktypen (`test`, `test new`, `test zaaktype`), dus op Mijn contact staan alleen die thema's.
+  - Voor `ZAAK-2026-0000000162` (zaaktype `whitelisted`) verstuurde de OMC op 10 november een e-mail en zette een klantcontact in OpenKlant. De OMC pakt dat zaaktype dus op.
+- **Controleren.** `pnpm zgw:check --bsn=<bsn> --zaak=<zaak>` toont de zaken per thema, het eigenaarschap en de klantcontacten van de OMC over de zaak. Met `--zaaktypen` ook alle zaaktypen in de catalogus. Het stappenplan staat in `mvp-koppeling-testomgeving.md`.
+- **Nog open.**
+  - Ketentest (fase 3) met onze zaakvoorkeur: een kanaal kiezen voor een zaak met zaaktype `whitelisted`, een status zetten en controleren dat het bericht naar het gekozen adres gaat. Dit wacht op de beheerder (een volgende status met `informeren = true`, en wie die zet).
+  - Open punt 5 voor productie: welke thema's van Amsterdam in OpenZaak staan.
+  - Ondernemers (KVK): `fetchZakenVanGebruiker` geeft voor hen nog een lege lijst. De eigenaarscontrole kent KVK al wel.
+  - Een zaaktype-identificatie is alleen uniek binnen één catalogus. Bij meer catalogi kunnen twee zaaktypen onder één thema vallen.
 
 ### WP9: Opruimen
 

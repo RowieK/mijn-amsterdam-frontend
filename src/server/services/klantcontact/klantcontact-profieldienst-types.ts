@@ -106,10 +106,17 @@ export type ZaakKanaalVoorkeurPayloadFrontend = {
   value: string;
 };
 
+export type ZaakVoorkeurZaaktypeFrontend = {
+  identificatie: string;
+  omschrijving: string;
+};
+
 // Een zaak in Open Zaak waarvoor de klant een kanaal kan kiezen.
 export type ZaakVoorkeurZaakFrontend = {
   zaakIdentificatie: string;
   omschrijving: string;
+  // De frontend toont de zaken per zaaktype. `null` als het zaaktype niet op te halen was.
+  zaaktype: ZaakVoorkeurZaaktypeFrontend | null;
 };
 
 export type CommunicatievoorkeurenResponseFrontend = {

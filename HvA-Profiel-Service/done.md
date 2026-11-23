@@ -6,3 +6,4 @@
 - WP5
 - WP6 - WP6 is gemerged in WP5
 - WP7 moet nagekeken worden.
+- WP8 - gebouwd en getest op de testomgeving (zie 'Stand van WP8' in technisch_pva.md). De ketentest met de OMC (fase 3) wacht op de beheerder.

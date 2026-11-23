@@ -55,6 +55,10 @@ describe('fetchCommunicatievoorkeuren', () => {
     const zaak = {
       zaakIdentificatie: 'ZAAK-2026-0000000171',
       omschrijving: 'Melding openbare ruimte',
+      zaaktype: {
+        identificatie: 'MELDING-OPENBARE-RUIMTE',
+        omschrijving: 'Melding openbare ruimte',
+      },
     };
 
     afterEach(() => {

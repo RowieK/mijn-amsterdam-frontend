@@ -6,13 +6,12 @@ import type {
   ProfielserviceBackend,
 } from './klantcontact-backend-types.ts';
 import {
-  toZaakVoorkeurZaken,
+  fetchZaakVoorkeurZaken,
   transformContactgegevenSource,
 } from './klantcontact-helpers.ts';
 import type {
   DigitaalAdresPayloadSource,
   DigitaalAdresSource,
-  OpenKlantPaginatedSource,
   PartijSource,
 } from './klantcontact-openklant-types.ts';
 import type {
@@ -30,11 +29,8 @@ import {
 import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
 import { getCustomApiConfig } from '../../helpers/source-api-helpers.ts';
 import { requestData } from '../../helpers/source-api-request.ts';
-import { joinApiUrl } from '../../helpers/zgw-api-helpers.ts';
-import {
-  fetchZakenVanGebruiker,
-  zaakIsVanGebruiker as zaakIsVanGebruikerInOpenZaak,
-} from '../openzaak/openzaak-api-service.ts';
+import { joinApiUrl, requestAllPages } from '../../helpers/zgw-api-helpers.ts';
+import { zaakIsVanGebruiker as zaakIsVanGebruikerInOpenZaak } from '../openzaak/openzaak-api-service.ts';
 
 type OpenKlantConfig = NonNullable<GemeenteKlantcontactConfig['openKlant']>;
 type ConfiguredOpenKlantConfig = { url: string; token: string };
@@ -187,13 +183,12 @@ export async function fetchPartij(
         expand: 'digitaleAdressen',
       },
       formatUrl: ({ url }) => joinApiUrl(String(url), 'partijen'),
-      transformResponse: (response: OpenKlantPaginatedSource<PartijSource>) =>
-        response.results,
       enableCache: false,
     }
   );
 
-  const response = await requestData<PartijSource[]>(apiConfig);
+  // Alle pagina's: negeert Open Klant een filter, dan kan de partij van de gebruiker op een latere pagina staan.
+  const response = await requestAllPages<PartijSource>(apiConfig);
 
   if (response.status !== 'OK') {
     return response;
@@ -411,10 +406,8 @@ export function createOpenKlantBackend({
         authProfileAndToken,
         zaakIdentificatie
       ),
-    fetchZaken: async (authProfileAndToken) =>
-      toZaakVoorkeurZaken(
-        await fetchZakenVanGebruiker(openZaak, authProfileAndToken)
-      ),
+    fetchZaken: (authProfileAndToken) =>
+      fetchZaakVoorkeurZaken(openZaak, authProfileAndToken),
     // Open Klant kent geen diensten waarop een gebruiker is aangesloten.
     fetchDienstverlener: (_authProfileAndToken, dienstverlenerNaam) =>
       Promise.resolve(

@@ -16,7 +16,7 @@ Dat gebeurt in drie fases:
 | **2. Koppeling aantonen** | Je logt in, ziet je zaken uit OpenZaak, kiest per zaak een e-mailadres, en die keuze staat daarna in OpenKlant | Een BSN dat initiator is van een zaak in OpenZaak | Nee |
 | **3. Ketentest met de OMC** | Na een nieuwe status komt de e-mail binnen op het gekozen adres | Een zaaktype dat de OMC oppakt, en iemand die de status zet | Ja |
 
-Fase 1 is klaar. Fase 2 is uit te voeren met de stappen hieronder. Fase 3 wacht op de beheerder (zie [Openstaande aanvragen](#openstaande-aanvragen)).
+Fase 1 is klaar. Fase 2 is uitgevoerd: op 23 november 2026 stond in OpenKlant voor de testpersoon een adres met `referentie ZAAK-2026-0000000172`. De stappen hieronder herhalen het. Fase 3 wacht op de beheerder (zie [Openstaande aanvragen](#openstaande-aanvragen)).
 
 ## Gebruikte testgegevens
 
@@ -106,6 +106,8 @@ pnpm zgw:check --bsn=534730103
 
 Verwacht bij OpenKlant: één contactgegeven, `Email ****@gmail.com (standaard, geverifieerd)`.
 
+Bij OpenZaak toont het script de open zaken van dit BSN per zaaktype: dezelfde thema's als in de tabel op Mijn contact. Met `--zaaktypen` toont het ook alle zaaktypen in de catalogus. De testomgeving kent alleen testzaaktypen (`test`, `test new`, `test zaaktype`), dus op Mijn contact zie je alleen die thema's.
+
 ### 4. Dev-account toevoegen en de BFF herstarten
 
 1. Voeg `HvA-Test=534730103` (of een andere naam) toe aan `MA_TEST_ACCOUNTS` in `.env.local`.
@@ -114,8 +116,8 @@ Verwacht bij OpenKlant: één contactgegeven, `Email ****@gmail.com (standaard, 
 ### 5. Inloggen en een kanaal kiezen
 
 1. Log in met het dev-account via de frontend (`http://localhost:3000`) of direct via `http://localhost:5000/api/v1/auth/digid/login?username=HvA-Test`.
-2. Ga naar **Mijn contact**. In de tabel met communicatievoorkeuren staat het thema **Zaken** met de open zaken uit OpenZaak.
-3. Klik bij Zaken op **wijzig** en kies voor `ZAAK-2026-0000000166` het e-mailadres.
+2. Ga naar **Mijn contact**. In de tabel met communicatievoorkeuren staan de open zaken uit OpenZaak, met elk zaaktype als eigen thema (bijvoorbeeld "Melding openbare ruimte"). Een zaak waarvan het zaaktype niet op te halen is, staat onder **Zaken**.
+3. Klik bij het thema van `ZAAK-2026-0000000166` op **wijzig** en kies voor die zaak het e-mailadres.
 
 De BFF controleert eerst in OpenZaak dat `534730103` de initiator van de zaak is. Daarna schrijft hij in OpenKlant een tweede digitaal adres met `referentie = ZAAK-2026-0000000166` en `isStandaardAdres: false`.
 
@@ -145,17 +147,17 @@ Voorwaarden (beheerder):
 3. Iemand zet de status: de beheerder, of wij zelf met het recht `zaken.statussen.toevoegen`.
 4. De OMC-versie op de testomgeving kiest het adres op `referentie`. De testdata wijzen erop, maar dat is niet bevestigd.
 
-Of `ZAAK-2026-0000000166` aan voorwaarden 1 en 2 voldoet, is nog niet bekend. Vraag het na, of gebruik een testzaak van de beheerder met `534730103` als initiator.
+Voorwaarde 1 lijkt rond voor het zaaktype `whitelisted` ("test zaaktype"). Voor `ZAAK-2026-0000000162`, met dat zaaktype en `534730103` als initiator, verstuurde de OMC op 10 november 2026 een e-mail en zette een klantcontact in OpenKlant (`pnpm zgw:check --zaak=ZAAK-2026-0000000162`). Kies voor de ketentest dus een zaak met dat zaaktype, zoals `ZAAK-2026-0000000166` of `…0162`, en niet een zaak met zaaktype `1` ("test new"). Of de volgende status `informeren = true` heeft (voorwaarde 2), is nog niet bekend.
 
 Stappen:
 1. Zorg dat het kanaal voor de zaak gekozen is (fase 2, stap 5).
 2. Laat een status op de zaak zetten.
 3. **Bewijs:**
    - de e-mail komt binnen op `email-test-gebruiker`;
-   - in OpenKlant staat een nieuw klantcontact van de OMC met kanaal `Email`, "gelukt" en het bericht-id van NotifyNL (`metadata.notifyNotificationId`).
+   - in OpenKlant staat een nieuw klantcontact van de OMC met kanaal `Email`, "gelukt" en het bericht-id van NotifyNL (`metadata.notifyNotificationId`). Dat toont `pnpm zgw:check --bsn=534730103 --zaak=<zaak>` onder "Klantcontacten van de OMC over de zaak".
 4. **Tegenproef:** zet de keuze terug op "standaard" en zet weer een status. Het bericht gaat dan naar het standaardadres.
 
-Nog te bouwen: `zgw:check --zaak=…` laat de klantcontacten van de OMC voor die zaak zien. Dat maakt het bewijs reproduceerbaar zonder de logs van de beheerder.
+`zgw:check --zaak=…` zoekt de klantcontacten op de uuid, de identificatie en de URL van de zaak, want de spec zegt niet welke waarde de OMC als onderwerpobject gebruikt. Het bewijs is zo te herhalen zonder de logs van de beheerder. Het script toont de inhoud van het bericht niet.
 
 ## Openstaande aanvragen
 
@@ -173,7 +175,8 @@ Nog te bouwen: `zgw:check --zaak=…` laat de klantcontacten van de OMC voor die
 | Zaken van de ingelogde burger uit OpenZaak (`expand=rollen`, initiator zelf gecontroleerd) | `src/server/services/openzaak/openzaak-api-service.ts` (`fetchZakenVanGebruiker`) |
 | `fetchZaken` op beide backends en de zaken in het antwoord van de communicatievoorkeuren | `klantcontact-backend-types.ts`, `klantcontact-openklant.ts`, `klantcontact-profieldienst.ts`, `klantcontact-communicatievoorkeuren.ts` |
 | `portaalvoorkeur` telt als adres van de partij, niet als zaak; standaardadres op `isStandaardAdres` | `klantcontact-helpers.ts`, `klantcontact-route-handlers.ts` |
-| Thema "Zaken" op Mijn contact | `src/client/apps/bob/pages/Thema/KlantContact/Communicatievoorkeuren/useZaakVoorkeurThemas.ts` |
+| Zaaktype van elke zaak uit de Catalogi API van hetzelfde OpenZaak | `src/server/services/openzaak/openzaak-api-service.ts` (`fetchZaaktypen`), `klantcontact-helpers.ts` (`fetchZaakVoorkeurZaken`) |
+| Eén thema per zaaktype op Mijn contact, de rest onder "Zaken" | `src/client/apps/bob/pages/Thema/KlantContact/Communicatievoorkeuren/useZaakVoorkeurThemas.ts` |
 | Kanalen en abonnementen van Open Notificaties | `src/server/services/opennotificaties/` |
 | Scripts | `src/scripts/zgw-koppelingen-check.ts`, `zgw-testzaken.ts`, `zgw-testpersoon-seed.ts`, gedeelde hulpfuncties in `zgw-script-helpers.ts` |
 
@@ -186,11 +189,15 @@ Bij elk onderdeel horen tests (`*.test.ts` ernaast).
   - Een bestaande partij kan van de tests van iemand anders zijn; daarom liever een BSN zonder partij.
 - **De verificatie is een shortcut.** OpenKlant kent geen verificatie. Het seedscript zet de `verificatieDatum` zelf. Voor echte burgers moet de verificatie via NotifyNL gebouwd worden (code versturen, code controleren, dan `verificatieDatum` zetten).
 - **Seedscript.** Gebouwd op de Klantinteracties-spec 0.7.0. Weigert OpenKlant iets, dan toont het script de foutmelding van de API. Gaat het mis na het aanmaken van de partij, dan staat er een partij zonder BSN. Het script meldt dat met de uuid. Opnieuw draaien vindt die partij niet en maakt een nieuwe.
-- **Beperkingen van de zakenlijst:**
+- **De zakenlijst:**
+  - alle zaken van de burger: de BFF volgt de pagina's van OpenZaak (`next`) tot de laatste, zonder vast maximum. Mislukt een pagina, dan geeft de BFF een fout en geen halve lijst. Hetzelfde geldt voor de rollen bij de eigenaarscontrole en voor het zoeken van de partij in OpenKlant;
   - alleen open zaken (zonder einddatum), want een afgesloten zaak krijgt geen notificaties meer;
-  - alleen de eerste 100;
   - alleen burgers, nog geen ondernemers (KVK).
-- **Thema "Zaken".** Het linkt naar Mijn contact zelf, want er is nog geen themapagina voor zaken uit OpenZaak. Het is het enige thema in de tabel met een kanaalkeuze per zaak. Erfpacht staat er niet meer in: de zaken van Erfpacht komen uit Vernise en niet uit OpenZaak, dus de eigenaarscontrole zou een keuze altijd weigeren (403).
+- **Thema's uit OpenZaak.** Elk zaaktype is een eigen thema in de tabel. Versies van een zaaktype hebben dezelfde identificatie en vallen onder één thema.
+  - Het zaaktype komt uit de Catalogi API van hetzelfde OpenZaak. Daarvoor heeft onze client de scope `catalogi.lezen` nodig. Zonder die scope, of als het zaaktype in een catalogus op een andere host staat, komt de zaak onder het thema **Zaken**. De kanaalkeuze werkt dan gewoon.
+  - De BFF stuurt zijn token alleen naar de host van OpenZaak, ook als een zaak naar een zaaktype elders verwijst.
+  - Een thema linkt naar Mijn contact zelf, want er is nog geen themapagina voor zaken uit OpenZaak.
+  - Erfpacht staat er niet meer in: de zaken van Erfpacht komen uit Vernise en niet uit OpenZaak, dus de eigenaarscontrole zou een keuze altijd weigeren (403).
 - **De eigenaarscontrole is streng.** Een kanaal kiezen kan alleen voor een zaak waarvan de ingelogde burger de initiator is (anders 403), en alleen voor een al geverifieerd adres van de burger zelf (anders 400). Zonder RSIN of bij een fout in OpenZaak weigert de BFF (503).
 - **Feature toggle.** De zaakvoorkeuren staan aan buiten productie (`KLANT_CONTACT.zaakvoorkeuren`). In productie verschijnt het thema Zaken niet.
 - **Open Notificaties is niet hetzelfde als NotifyNL.** De adressen eindigen allebei op `test.notifynl.nl`, maar het zijn twee aparte diensten:

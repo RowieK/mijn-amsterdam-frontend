@@ -16,10 +16,20 @@ export type ZaakSource = {
 
 // Een zaak uit `GET /zaken?expand=rollen`.
 export type ZaakMetRollenSource = ZaakSource & {
+  // URL van het zaaktype in de Catalogi API.
+  zaaktype: string;
   omschrijving: string;
   startdatum: string;
   einddatum: string | null;
   _expand?: { rollen?: RolSource[] };
+};
+
+// Alleen de velden van de Catalogi API (1.x) die de BFF gebruikt. Versies van een zaaktype hebben elk een eigen
+// URL, maar dezelfde identificatie.
+export type ZaaktypeSource = {
+  url: string;
+  identificatie: string;
+  omschrijving: string;
 };
 
 export type RolBetrokkeneType =

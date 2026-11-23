@@ -31,6 +31,7 @@ function getZaak(
     uuid: identificatie,
     identificatie,
     bronorganisatie: '123456782',
+    zaaktype: `${remoteApiHost}/catalogi/api/v1/zaaktypen/1`,
     omschrijving: `Zaak ${identificatie}`,
     startdatum: '2026-03-01',
     einddatum: null,

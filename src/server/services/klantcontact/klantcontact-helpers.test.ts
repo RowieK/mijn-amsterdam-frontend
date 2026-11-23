@@ -1,5 +1,6 @@
 import type { GemeenteKlantcontactConfig } from './klantcontact-backend-types.ts';
 import {
+  fetchZaakVoorkeurZaken,
   getMostRecentByContactgegevenType,
   getValidZaakReferentie,
   getZaakKanaalVoorkeuren,
@@ -8,10 +9,14 @@ import {
   zaakIdentificatieAlsReferentie,
 } from './klantcontact-helpers.ts';
 import type { ContactgegevenSource } from './klantcontact-profieldienst-types.ts';
+import { remoteApiHost } from '../../../testing/setup.ts';
+import { getAuthProfileAndToken, remoteApi } from '../../../testing/utils.ts';
 import {
   apiErrorResult,
   apiSuccessResult,
 } from '../../../universal/helpers/api.ts';
+import { getOpenZaakConfig } from '../openzaak/openzaak-service-config.ts';
+import type { ZaakMetRollenSource } from '../openzaak/openzaak-types.ts';
 
 function getContactgegeven(
   overrides: Partial<ContactgegevenSource>
@@ -299,17 +304,30 @@ describe('klantcontact-helpers', () => {
   });
 
   describe('toZaakVoorkeurZaken', () => {
-    const zaak = {
+    const ZAAKTYPE_URL =
+      'https://openzaak.example.nl/catalogi/api/v1/zaaktypen/1';
+    const zaak: ZaakMetRollenSource = {
       url: 'https://openzaak.example.nl/zaken/api/v1/zaken/1',
       uuid: '1',
       identificatie: 'ZAAK-2026-0000000171',
       bronorganisatie: '123456782',
+      zaaktype: ZAAKTYPE_URL,
       omschrijving: 'Melding openbare ruimte',
       startdatum: '2026-03-01',
       einddatum: null,
     };
+    const zaaktypen = new Map([
+      [
+        ZAAKTYPE_URL,
+        {
+          url: ZAAKTYPE_URL,
+          identificatie: 'MELDING-OPENBARE-RUIMTE',
+          omschrijving: 'Melding openbare ruimte (zaaktype)',
+        },
+      ],
+    ]);
 
-    test('geeft de identificatie en omschrijving van de open zaken', () => {
+    test('geeft de identificatie, omschrijving en het zaaktype van de open zaken', () => {
       const result = toZaakVoorkeurZaken(
         apiSuccessResult([
           zaak,
@@ -318,7 +336,8 @@ describe('klantcontact-helpers', () => {
             identificatie: 'ZAAK-AFGESLOTEN',
             einddatum: '2026-01-01',
           },
-        ])
+        ]),
+        zaaktypen
       );
 
       expect(result).toEqual(
@@ -326,20 +345,46 @@ describe('klantcontact-helpers', () => {
           {
             zaakIdentificatie: 'ZAAK-2026-0000000171',
             omschrijving: 'Melding openbare ruimte',
+            zaaktype: {
+              identificatie: 'MELDING-OPENBARE-RUIMTE',
+              omschrijving: 'Melding openbare ruimte (zaaktype)',
+            },
           },
         ])
       );
     });
 
-    test('toont de identificatie als de zaak geen omschrijving heeft', () => {
+    test('geeft zaaktype null als het zaaktype niet bekend is', () => {
+      const result = toZaakVoorkeurZaken(apiSuccessResult([zaak]));
+
+      expect(result.content).toEqual([
+        expect.objectContaining({ zaaktype: null }),
+      ]);
+    });
+
+    test('toont de identificatie als de zaak of het zaaktype geen omschrijving heeft', () => {
       const result = toZaakVoorkeurZaken(
-        apiSuccessResult([{ ...zaak, omschrijving: '' }])
+        apiSuccessResult([{ ...zaak, omschrijving: '' }]),
+        new Map([
+          [
+            ZAAKTYPE_URL,
+            {
+              url: ZAAKTYPE_URL,
+              identificatie: 'MELDING-OPENBARE-RUIMTE',
+              omschrijving: '',
+            },
+          ],
+        ])
       );
 
       expect(result.content).toEqual([
         {
           zaakIdentificatie: 'ZAAK-2026-0000000171',
           omschrijving: 'ZAAK-2026-0000000171',
+          zaaktype: {
+            identificatie: 'MELDING-OPENBARE-RUIMTE',
+            omschrijving: 'MELDING-OPENBARE-RUIMTE',
+          },
         },
       ]);
     });
@@ -348,6 +393,114 @@ describe('klantcontact-helpers', () => {
       const fout = apiErrorResult('Mislukt', null);
 
       expect(toZaakVoorkeurZaken(fout)).toBe(fout);
+    });
+  });
+
+  describe('fetchZaakVoorkeurZaken', () => {
+    const BSN = '999990019';
+    const ZAAKTYPEN_PATH = '/catalogi/api/v1/zaaktypen';
+    const authProfileAndToken = getAuthProfileAndToken('private');
+    authProfileAndToken.profile.id = BSN;
+
+    function zaakVanGebruiker(
+      identificatie: string,
+      zaaktypeId: string,
+      einddatum: string | null = null
+    ): ZaakMetRollenSource {
+      return {
+        url: `${remoteApiHost}/zaken/api/v1/zaken/${identificatie}`,
+        uuid: identificatie,
+        identificatie,
+        bronorganisatie: '123456782',
+        zaaktype: `${remoteApiHost}${ZAAKTYPEN_PATH}/${zaaktypeId}`,
+        omschrijving: `Zaak ${identificatie}`,
+        startdatum: '2026-03-01',
+        einddatum,
+        _expand: {
+          rollen: [
+            {
+              url: `${remoteApiHost}/zaken/api/v1/rollen/${identificatie}`,
+              zaak: `${remoteApiHost}/zaken/api/v1/zaken/${identificatie}`,
+              betrokkeneType: 'natuurlijk_persoon',
+              omschrijvingGeneriek: 'initiator',
+              betrokkeneIdentificatie: { inpBsn: BSN },
+            },
+          ],
+        },
+      };
+    }
+
+    function mockZaken(results: ZaakMetRollenSource[]) {
+      remoteApi
+        .get('/zaken/api/v1/zaken')
+        .query(true)
+        .reply(200, {
+          count: results.length,
+          next: null,
+          previous: null,
+          results,
+        });
+    }
+
+    test('geeft de open zaken met hun zaaktype, en haalt alleen de zaaktypen van open zaken op', async () => {
+      mockZaken([
+        zaakVanGebruiker('ZAAK-1', 'melding'),
+        zaakVanGebruiker('ZAAK-2', 'afgesloten', '2026-01-01'),
+      ]);
+      remoteApi.get(`${ZAAKTYPEN_PATH}/melding`).reply(200, {
+        url: `${remoteApiHost}${ZAAKTYPEN_PATH}/melding`,
+        identificatie: 'MELDING-OPENBARE-RUIMTE',
+        omschrijving: 'Melding openbare ruimte',
+      });
+
+      const response = await fetchZaakVoorkeurZaken(
+        getOpenZaakConfig(),
+        authProfileAndToken
+      );
+
+      expect(response).toEqual(
+        apiSuccessResult([
+          {
+            zaakIdentificatie: 'ZAAK-1',
+            omschrijving: 'Zaak ZAAK-1',
+            zaaktype: {
+              identificatie: 'MELDING-OPENBARE-RUIMTE',
+              omschrijving: 'Melding openbare ruimte',
+            },
+          },
+        ])
+      );
+    });
+
+    test('geeft de zaak zonder zaaktype als de Catalogi API weigert', async () => {
+      mockZaken([zaakVanGebruiker('ZAAK-1', 'melding')]);
+      remoteApi.get(`${ZAAKTYPEN_PATH}/melding`).reply(403);
+
+      const response = await fetchZaakVoorkeurZaken(
+        getOpenZaakConfig(),
+        authProfileAndToken
+      );
+
+      expect(response).toEqual(
+        apiSuccessResult([
+          {
+            zaakIdentificatie: 'ZAAK-1',
+            omschrijving: 'Zaak ZAAK-1',
+            zaaktype: null,
+          },
+        ])
+      );
+    });
+
+    test('geeft een foutresultaat als de zaken niet op te halen zijn', async () => {
+      remoteApi.get('/zaken/api/v1/zaken').query(true).reply(500);
+
+      const response = await fetchZaakVoorkeurZaken(
+        getOpenZaakConfig(),
+        authProfileAndToken
+      );
+
+      expect(response).toMatchObject({ status: 'ERROR', content: null });
     });
   });
 });
