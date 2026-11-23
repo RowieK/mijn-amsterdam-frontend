@@ -175,6 +175,14 @@ process.env.DEBUG_REQUEST_DATA = '';
 process.env.BFF_CONTACTMOMENTEN_BASE_URL = `${remoteApiHost}/salesforce/contactmomenten`;
 process.env.BFF_PROFIEL_API_BASE_URL = `${remoteApiHost}/profielservice`;
 
+process.env.BFF_OPENZAAK_BASE_URL = `${remoteApiHost}/zaken/api/v1/`;
+process.env.BFF_OPENZAAK_CLIENT_ID = 'test-openzaak-client';
+process.env.BFF_OPENZAAK_JWT_SECRET = 'test-openzaak-jwt-secret';
+process.env.BFF_OPENZAAK_BRONORGANISATIE = '123456782';
+process.env.BFF_OPENKLANT_BASE_URL = `${remoteApiHost}/klantinteracties/api/v1/`;
+process.env.BFF_OPENKLANT_TOKEN = 'test-openklant-token';
+process.env.BFF_OPENNOTIFICATIES_BASE_URL = `${remoteApiHost}/notificaties/api/v1/`;
+
 process.env.BFF_POM_API_BASE_URL = `${remoteApiHost}/pom`;
 
 process.env.BFF_BENK_BRP_CLIENT_ID = 'test-client-id';

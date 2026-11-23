@@ -64,6 +64,7 @@ function getBackend(overrides: Partial<KlantcontactBackend> = {}) {
     deleteContactgegeven: vi.fn().mockResolvedValue(apiSuccessResult(null)),
     verifyContactgegeven: vi.fn(),
     zaakIsVanGebruiker: vi.fn(),
+    fetchZaken: vi.fn(),
     ...overrides,
   } satisfies KlantcontactBackend;
 }

@@ -6,6 +6,7 @@ import {
   getZaakKanaalVoorkeuren,
   isValidEmail,
   isValidZaakReferentie,
+  toZaakVoorkeurZaken,
   zaakIdentificatieAlsReferentie,
 } from './klantcontact-helpers.ts';
 import type { ContactgegevenSource } from './klantcontact-profieldienst-types.ts';
@@ -40,6 +41,7 @@ describe('klantcontact-helpers', () => {
       ['', false],
       ['a'.repeat(50), true],
       ['a'.repeat(51), false],
+      ['portaalvoorkeur', false],
     ])('%s is %s', (referentie, expected) => {
       expect(isValidZaakReferentie(referentie)).toBe(expected);
     });
@@ -146,6 +148,63 @@ describe('klantcontact-helpers', () => {
       expect(result.id).toBe('standaard');
     });
 
+    test('telt het adres met referentie portaalvoorkeur als adres van de partij', () => {
+      const contactgegevens = apiSuccessResult([
+        getContactgegeven({ id: 'portaal', referentie: 'portaalvoorkeur' }),
+      ]);
+
+      const result = getMostRecentByContactgegevenType(
+        contactgegevens,
+        'Email'
+      );
+
+      expect(result.id).toBe('portaal');
+    });
+
+    test('kiest zonder datums (Open Klant) het standaardadres', () => {
+      const contactgegevens = apiSuccessResult([
+        getContactgegeven({
+          id: 'ander',
+          isDefault: false,
+          lastUpdated: null,
+        }),
+        getContactgegeven({
+          id: 'standaard',
+          isDefault: true,
+          lastUpdated: null,
+        }),
+      ]);
+
+      const result = getMostRecentByContactgegevenType(
+        contactgegevens,
+        'Email'
+      );
+
+      expect(result.id).toBe('standaard');
+    });
+
+    test('geeft een geverifieerd adres voorrang op een ongeverifieerd standaardadres', () => {
+      const contactgegevens = apiSuccessResult([
+        getContactgegeven({
+          id: 'standaard',
+          isDefault: true,
+          isGeverifieerd: false,
+        }),
+        getContactgegeven({
+          id: 'geverifieerd',
+          isDefault: false,
+          isGeverifieerd: true,
+        }),
+      ]);
+
+      const result = getMostRecentByContactgegevenType(
+        contactgegevens,
+        'Email'
+      );
+
+      expect(result.id).toBe('geverifieerd');
+    });
+
     test('geeft een leeg contactgegeven als er alleen zaakadressen zijn', () => {
       const contactgegevens = apiSuccessResult([
         getContactgegeven({ referentie: 'Z-24-2238078' }),
@@ -210,6 +269,14 @@ describe('klantcontact-helpers', () => {
           isVerified: false,
         },
       });
+    });
+
+    test('ziet het adres met referentie portaalvoorkeur niet als zaakvoorkeur', () => {
+      const contactgegevens = apiSuccessResult([
+        getContactgegeven({ referentie: 'portaalvoorkeur' }),
+      ]);
+
+      expect(getZaakKanaalVoorkeuren(contactgegevens)).toEqual([]);
     });
 
     test('negeert contactgegevens met een ander type dan een zaakkanaal', () => {
@@ -323,6 +390,59 @@ describe('klantcontact-helpers', () => {
       );
 
       expect(result.map(({ id }) => id)).toEqual(['gevalideerd']);
+    });
+  });
+
+  describe('toZaakVoorkeurZaken', () => {
+    const zaak = {
+      url: 'https://openzaak.example.nl/zaken/api/v1/zaken/1',
+      uuid: '1',
+      identificatie: 'ZAAK-2026-0000000171',
+      bronorganisatie: '123456782',
+      omschrijving: 'Melding openbare ruimte',
+      startdatum: '2026-03-01',
+      einddatum: null,
+    };
+
+    test('geeft de identificatie en omschrijving van de open zaken', () => {
+      const result = toZaakVoorkeurZaken(
+        apiSuccessResult([
+          zaak,
+          {
+            ...zaak,
+            identificatie: 'ZAAK-AFGESLOTEN',
+            einddatum: '2026-01-01',
+          },
+        ])
+      );
+
+      expect(result).toEqual(
+        apiSuccessResult([
+          {
+            zaakIdentificatie: 'ZAAK-2026-0000000171',
+            omschrijving: 'Melding openbare ruimte',
+          },
+        ])
+      );
+    });
+
+    test('toont de identificatie als de zaak geen omschrijving heeft', () => {
+      const result = toZaakVoorkeurZaken(
+        apiSuccessResult([{ ...zaak, omschrijving: '' }])
+      );
+
+      expect(result.content).toEqual([
+        {
+          zaakIdentificatie: 'ZAAK-2026-0000000171',
+          omschrijving: 'ZAAK-2026-0000000171',
+        },
+      ]);
+    });
+
+    test('geeft een foutresultaat ongewijzigd door', () => {
+      const fout = apiErrorResult('Mislukt', null);
+
+      expect(toZaakVoorkeurZaken(fout)).toBe(fout);
     });
   });
 });

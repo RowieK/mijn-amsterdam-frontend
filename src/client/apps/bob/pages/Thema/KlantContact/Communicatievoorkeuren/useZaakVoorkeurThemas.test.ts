@@ -1,9 +1,13 @@
 import { renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { useZaakVoorkeurThemas } from './useZaakVoorkeurThemas.ts';
+import {
+  OPENZAAK_ZAKEN_THEMA_ID,
+  useZaakVoorkeurThemas,
+} from './useZaakVoorkeurThemas.ts';
 import { useAppStateStore } from '../../../../../../hooks/useAppStateStore.ts';
 import { themaConfig as erfpachtThemaConfig } from '../../Erfpacht/Erfpacht-thema-config.ts';
+import { themaConfig as klantContactThemaConfig } from '../KlantContact-thema-config.ts';
 
 type ErfpachtToggles = {
   active: boolean;
@@ -20,6 +24,17 @@ function setErfpachtContent(content: unknown) {
   } as never);
 }
 
+function setOpenZaakZaken(
+  zaken: { zaakIdentificatie: string; omschrijving: string }[]
+) {
+  useAppStateStore.setState({
+    KLANT_CONTACT: {
+      status: 'OK',
+      content: { communicatievoorkeuren: { zaken } },
+    },
+  } as never);
+}
+
 describe('useZaakVoorkeurThemas', () => {
   const originalToggles = {
     active: erfpachtThemaConfig.featureToggle.active,
@@ -33,6 +48,7 @@ describe('useZaakVoorkeurThemas', () => {
 
   afterEach(() => {
     setErfpachtToggles(originalToggles);
+    setOpenZaakZaken([]);
   });
 
   it('geeft de zaken van Erfpacht met het zaaknummer als zaakidentificatie', () => {
@@ -97,5 +113,47 @@ describe('useZaakVoorkeurThemas', () => {
     const { result } = renderHook(() => useZaakVoorkeurThemas());
 
     expect(result.current).toEqual([]);
+  });
+
+  describe('zaken uit Open Zaak', () => {
+    const openZaakZaak = {
+      zaakIdentificatie: 'ZAAK-2026-0000000171',
+      omschrijving: 'Melding openbare ruimte',
+    };
+
+    it('geeft de zaken uit Open Zaak als eigen thema met een link naar Mijn contact', () => {
+      setErfpachtContent(null);
+      setOpenZaakZaken([openZaakZaak]);
+
+      const { result } = renderHook(() => useZaakVoorkeurThemas());
+
+      expect(result.current).toEqual([
+        {
+          id: OPENZAAK_ZAKEN_THEMA_ID,
+          title: 'Zaken',
+          route: klantContactThemaConfig.route.path,
+          zaken: [openZaakZaak],
+        },
+      ]);
+    });
+
+    it('zet een zaak die al bij Erfpacht staat niet nog een keer in het thema Zaken', () => {
+      setErfpachtContent({
+        dossiers: { dossiers: [] },
+        zaken: [
+          {
+            zaakNummer: openZaakZaak.zaakIdentificatie,
+            zaakOmschrijving: 'Wijzigen erfpachtrecht',
+          },
+        ],
+      });
+      setOpenZaakZaken([openZaakZaak]);
+
+      const { result } = renderHook(() => useZaakVoorkeurThemas());
+
+      expect(result.current.map((thema) => thema.id)).toEqual([
+        erfpachtThemaConfig.id,
+      ]);
+    });
   });
 });

@@ -1,7 +1,31 @@
+import type {
+  GemeenteKlantcontactConfig,
+  ProfielserviceBackend,
+} from './klantcontact-backend-types.ts';
+import { createOpenKlantBackend } from './klantcontact-openklant.ts';
 import { createProfielserviceBackend } from './klantcontact-profieldienst.ts';
-import { getAmsterdamKlantcontactConfig } from './klantcontact-service-config.ts';
+import {
+  getAmsterdamKlantcontactConfig,
+  getKlantcontactBackendNaam,
+  type KlantcontactBackendNaam,
+} from './klantcontact-service-config.ts';
 
-// Amsterdam gebruikt de profielservice. Een andere gemeente krijgt hier een eigen config en backend.
+export function createKlantcontactBackend(
+  naam: KlantcontactBackendNaam,
+  config: GemeenteKlantcontactConfig
+): ProfielserviceBackend {
+  switch (naam) {
+    case 'openklant':
+      return createOpenKlantBackend(config);
+    case 'profielservice':
+      return createProfielserviceBackend(config);
+  }
+}
+
+// De backend volgt uit BFF_KLANTCONTACT_BACKEND: standaard de profielservice, `openklant` voor Open Klant.
+// Een andere gemeente krijgt hier een eigen config.
 export const klantcontactConfig = getAmsterdamKlantcontactConfig();
-export const klantcontactBackend =
-  createProfielserviceBackend(klantcontactConfig);
+export const klantcontactBackend = createKlantcontactBackend(
+  getKlantcontactBackendNaam(),
+  klantcontactConfig
+);

@@ -8,6 +8,7 @@ import type {
 } from './klantcontact-backend-types.ts';
 import {
   getIdentificatieType,
+  toZaakVoorkeurZaken,
   transformContactgegevenSource,
 } from './klantcontact-helpers.ts';
 import type {
@@ -28,6 +29,10 @@ import {
 import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
 import { getCustomApiConfig } from '../../helpers/source-api-helpers.ts';
 import { requestData } from '../../helpers/source-api-request.ts';
+import {
+  fetchZakenVanGebruiker,
+  zaakIsVanGebruiker as zaakIsVanGebruikerInOpenZaak,
+} from '../openzaak/openzaak-api-service.ts';
 
 export function normalizeDutchMobileNumber(value: string): string {
   const normalized = value.replace(/[\s()-]/g, '');
@@ -49,7 +54,7 @@ export function normalizeDutchMobileNumber(value: string): string {
 
 // De adapter geeft een foutresultaat in plaats van een exception, zodat een ongeldig nummer
 // (bijvoorbeeld een bestaand vast nummer dat via een zaakvoorkeur wordt gekozen) geen 500 oplevert.
-function normalizeTelefoonnummer(value: string): ApiResponse<string> {
+export function normalizeTelefoonnummer(value: string): ApiResponse<string> {
   try {
     return apiSuccessResult(normalizeDutchMobileNumber(value));
   } catch {
@@ -254,21 +259,9 @@ async function verifyContactgegeven(
   return requestData<VerifyVerificationRequestResponse>(apiConfig);
 }
 
-// De profielservice kent geen zaken en kan dus niet vaststellen van wie een zaak is. De echte controle is een
-// OpenZaak-aanroep (plan WP8) en die service bestaat nog niet. Tot dan weigeren we altijd (fail closed):
-// liever geen zaakvoorkeur dan een voorkeur voor een zaak waarvan het eigenaarschap niet vaststaat.
-function zaakIsVanGebruiker(): Promise<ApiResponse<boolean>> {
-  return Promise.resolve(
-    apiErrorResult(
-      'Controle of de zaak van de gebruiker is, is nog niet beschikbaar',
-      null,
-      HttpStatusCode.ServiceUnavailable
-    )
-  );
-}
-
 export function createProfielserviceBackend({
   profielservice,
+  openZaak = {},
 }: GemeenteKlantcontactConfig): ProfielserviceBackend {
   return {
     fetchContactgegevens: (authProfileAndToken) =>
@@ -300,6 +293,19 @@ export function createProfielserviceBackend({
       ),
     verifyContactgegeven: (authProfileAndToken, props) =>
       verifyContactgegeven(profielservice, authProfileAndToken, props),
-    zaakIsVanGebruiker,
+    // De profielservice kent geen zaken. Het eigenaarschap van een zaak controleren we in Open Zaak.
+    // Is Open Zaak niet geconfigureerd of niet bereikbaar, dan weigeren we (fail closed): liever geen
+    // zaakvoorkeur dan een voorkeur voor een zaak waarvan het eigenaarschap niet vaststaat.
+    zaakIsVanGebruiker: (authProfileAndToken, zaakIdentificatie) =>
+      zaakIsVanGebruikerInOpenZaak(
+        openZaak,
+        authProfileAndToken,
+        zaakIdentificatie
+      ),
+    // Ook de zaken zelf komen uit Open Zaak.
+    fetchZaken: async (authProfileAndToken) =>
+      toZaakVoorkeurZaken(
+        await fetchZakenVanGebruiker(openZaak, authProfileAndToken)
+      ),
   };
 }

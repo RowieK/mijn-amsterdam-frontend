@@ -18,6 +18,7 @@ import {
   getThemaId,
   getValidZaakReferentie,
   isValidEmail,
+  isZaakContactgegeven,
 } from './klantcontact-helpers.ts';
 import { normalizeDutchMobileNumber } from './klantcontact-profieldienst.ts';
 import { apiErrorResult } from '../../../universal/helpers/api.ts';
@@ -158,7 +159,7 @@ export async function handleCreateContactgegeven(
     const eigenAdressen = contactgegevens.content.filter(
       (contactgegeven) =>
         contactgegeven.type === type &&
-        !contactgegeven.referentie &&
+        !isZaakContactgegeven(contactgegeven) &&
         !getThemaId(klantcontactConfig, contactgegeven)
     );
 
@@ -307,10 +308,10 @@ export async function handleSetZaakKanaalVoorkeur(
     );
   }
 
-  // Een zaakadres (met referentie) telt niet: de klant kiest uit zijn eigen, al geverifieerde adressen.
+  // Een zaakadres telt niet: de klant kiest uit zijn eigen, al geverifieerde adressen.
   const isGeverifieerdAdresVanKlant = contactgegevens.content.some(
     (contactgegeven) =>
-      !contactgegeven.referentie &&
+      !isZaakContactgegeven(contactgegeven) &&
       contactgegeven.type === kanaal &&
       contactgegeven.waarde === value &&
       contactgegeven.isGeverifieerd
@@ -400,7 +401,7 @@ export async function handleSetThemaKanaalVoorkeur(
   // Een zaakadres of themaadres telt niet: de klant kiest uit zijn eigen, al geverifieerde standaardadressen.
   const isGeverifieerdAdresVanKlant = contactgegevens.content.some(
     (contactgegeven) =>
-      !contactgegeven.referentie &&
+      !isZaakContactgegeven(contactgegeven) &&
       !getThemaId(klantcontactConfig, contactgegeven) &&
       contactgegeven.type === kanaal &&
       contactgegeven.waarde === value &&

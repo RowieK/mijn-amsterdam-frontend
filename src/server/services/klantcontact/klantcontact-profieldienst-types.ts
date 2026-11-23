@@ -47,8 +47,8 @@ export type ContactgegevenSource = {
   isGeverifieerd: boolean;
   isDefault: boolean;
   referentie?: string | null; // OpenKlant DigitaalAdres.referentie, bij een zaakvoorkeur de zaakidentificatie
-  createdAt: string; // ISO date string
-  lastUpdated: string; // ISO date string
+  createdAt: string | null; // ISO date string. Null bij Open Klant: een DigitaalAdres heeft geen aanmaakdatum.
+  lastUpdated: string | null; // ISO date string. Null bij Open Klant, zie createdAt.
   scopes: ScopeSource[];
 };
 
@@ -119,6 +119,12 @@ export type ThemaKanaalVoorkeurPayloadFrontend = {
   value: string;
 };
 
+// Een zaak in Open Zaak waarvoor de klant een kanaal kan kiezen.
+export type ZaakVoorkeurZaakFrontend = {
+  zaakIdentificatie: string;
+  omschrijving: string;
+};
+
 export type CommunicatievoorkeurenResponseFrontend = {
   standaardContactgegevens: ContactgegevenPerTypeFrontend | null;
   zaakKanaalVoorkeuren: ZaakKanaalVoorkeurFrontend[];
@@ -126,6 +132,8 @@ export type CommunicatievoorkeurenResponseFrontend = {
   // Alle eigen e-mailadressen. standaardContactgegevens.Email is daar het eerste van.
   emailadressen?: ContactgegevenFrontend[];
   aangeslotenDiensten?: DienstSource[];
+  // Leeg als de zaakvoorkeuren uit staan of Open Zaak niet bereikbaar is.
+  zaken?: ZaakVoorkeurZaakFrontend[];
 };
 
 export type DeleteContactgegevenResponseFrontend = {

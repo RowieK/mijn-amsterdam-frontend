@@ -53,12 +53,19 @@ export async function fetchCommunicatievoorkeuren(
     return apiPostponeResult(null);
   }
 
-  const [locationsResponse, contactgegevens, dienstverlenerResponse] =
-    await Promise.all([
-      fetchMyLocations(authProfileAndToken),
-      backend.fetchContactgegevens(authProfileAndToken),
-      backend.fetchDienstverlener(authProfileAndToken),
-    ]);
+  const [
+    locationsResponse,
+    contactgegevens,
+    dienstverlenerResponse,
+    zakenResponse,
+  ] = await Promise.all([
+    fetchMyLocations(authProfileAndToken),
+    backend.fetchContactgegevens(authProfileAndToken),
+    backend.fetchDienstverlener(authProfileAndToken),
+    featureToggle.zaakvoorkeuren
+      ? backend.fetchZaken(authProfileAndToken)
+      : apiSuccessResult([]),
+  ]);
 
   if (
     locationsResponse.status !== 'OK' &&
@@ -134,6 +141,8 @@ export async function fetchCommunicatievoorkeuren(
     themaKanaalVoorkeuren: config
       ? getThemaKanaalVoorkeuren(config, contactgegevens)
       : [],
+    // Zonder zaken uit Open Zaak blijft de rest van de voorkeuren bruikbaar.
+    zaken: zakenResponse.status === 'OK' ? zakenResponse.content : [],
   });
 }
 

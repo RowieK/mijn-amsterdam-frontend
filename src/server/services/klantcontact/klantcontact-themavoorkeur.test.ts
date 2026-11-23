@@ -127,6 +127,7 @@ function getBackend(overrides: Partial<KlantcontactBackend> = {}) {
     deleteContactgegeven: vi.fn().mockResolvedValue(apiSuccessResult(null)),
     verifyContactgegeven: vi.fn(),
     zaakIsVanGebruiker: vi.fn(),
+    fetchZaken: vi.fn().mockResolvedValue(apiSuccessResult([])),
     ...overrides,
   } satisfies KlantcontactBackend;
 }
@@ -477,6 +478,7 @@ describe('fetchCommunicatievoorkeuren met themakeuzes', () => {
         apiSuccessResult(contactgegevens)
       ),
       fetchDienstverlener: vi.fn(async () => apiSuccessResult(null)),
+      fetchZaken: vi.fn(async () => apiSuccessResult([])),
     } as unknown as ProfielserviceBackend;
   }
 
