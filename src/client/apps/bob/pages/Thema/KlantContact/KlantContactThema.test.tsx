@@ -6,7 +6,6 @@ import type { AfspraakFrontend } from '../../../../../../server/services/klantco
 import { bffApi } from '../../../../../../testing/utils.ts';
 import type { AppState } from '../../../../../../universal/types/App.types.ts';
 import { componentCreator } from '../../MockApp.tsx';
-import { themaConfig as erfpachtThemaConfig } from '../Erfpacht/Erfpacht-thema-config.ts';
 
 const createMijnContactThemaComponent = componentCreator({
   component: KlantContactThema,
@@ -166,69 +165,49 @@ describe('KlantContactThema', () => {
   });
 
   describe('zaakvoorkeuren per thema', () => {
-    const ZAAK_NUMMER = 'ZAAK-2025-0000011488';
-    const originalToggles = {
-      erfpacht: erfpachtThemaConfig.featureToggle.wijzigingsaanvragenActive,
-      zaakvoorkeuren: themaConfig.featureToggle.zaakvoorkeuren.active,
-    };
+    const ZAAK_IDENTIFICATIE = 'ZAAK-2026-0000000166';
+    const originalZaakvoorkeurenToggle =
+      themaConfig.featureToggle.zaakvoorkeuren.active;
 
-    function getStateWithErfpachtZaak(
+    function getStateWithOpenZaakZaak(
       zaakKanaalVoorkeuren: Array<Record<string, unknown>>
     ) {
-      return {
-        ...getState({
-          communicatievoorkeuren: {
-            standaardContactgegevens: {
-              Telefoonnummer: {
-                id: 'telefoon-1',
-                type: 'Telefoonnummer',
-                value: '0612345678',
-                isVerified: true,
-                dateModified: null,
-                dateModifiedFormatted: null,
-              },
+      return getState({
+        communicatievoorkeuren: {
+          standaardContactgegevens: {
+            Telefoonnummer: {
+              id: 'telefoon-1',
+              type: 'Telefoonnummer',
+              value: '0612345678',
+              isVerified: true,
+              dateModified: null,
+              dateModifiedFormatted: null,
             },
-            zaakKanaalVoorkeuren,
           },
-        }),
-        ERFPACHT: {
-          status: 'OK',
-          content: {
-            dossiers: { dossiers: [] },
-            zaken: [
-              {
-                zaakNummer: ZAAK_NUMMER,
-                zaakOmschrijving: 'Wijzigen erfpacht',
-              },
-            ],
-          },
+          zaakKanaalVoorkeuren,
+          zaken: [
+            {
+              zaakIdentificatie: ZAAK_IDENTIFICATIE,
+              omschrijving: 'Melding openbare ruimte',
+            },
+          ],
         },
-      } as unknown as AppState;
+      });
     }
 
     beforeEach(() => {
-      (
-        erfpachtThemaConfig.featureToggle as {
-          wijzigingsaanvragenActive: boolean;
-        }
-      ).wijzigingsaanvragenActive = true;
       (themaConfig.featureToggle.zaakvoorkeuren as { active: boolean }).active =
         true;
     });
 
     afterEach(() => {
-      (
-        erfpachtThemaConfig.featureToggle as {
-          wijzigingsaanvragenActive: boolean;
-        }
-      ).wijzigingsaanvragenActive = originalToggles.erfpacht;
       (themaConfig.featureToggle.zaakvoorkeuren as { active: boolean }).active =
-        originalToggles.zaakvoorkeuren;
+        originalZaakvoorkeurenToggle;
     });
 
-    test('shows Erfpacht with its zaken as a thema, following the standaardinstelling by default', () => {
+    test('shows the zaken from Open Zaak as a thema, following the standaardinstelling by default', () => {
       const KlantContactThema = createMijnContactThemaComponent(
-        getStateWithErfpachtZaak([])
+        getStateWithOpenZaakZaak([])
       );
       const screen = render(<KlantContactThema />);
 
@@ -236,7 +215,7 @@ describe('KlantContactThema', () => {
         screen.getByRole('table', {
           name: 'Mijn communicatievoorkeuren per thema',
         })
-      ).getByRole('row', { name: /Erfpacht/ });
+      ).getByRole('row', { name: /Zaken/ });
 
       expect(within(row).getAllByText('standaard')).toHaveLength(2);
       expect(
@@ -244,11 +223,38 @@ describe('KlantContactThema', () => {
       ).toBeInTheDocument();
     });
 
-    test('links the voorkeur of the BFF to the Erfpacht zaak on the zaakIdentificatie', () => {
+    test('does not show Erfpacht as a thema, because its zaken are not in Open Zaak', () => {
+      const KlantContactThema = createMijnContactThemaComponent({
+        ...getStateWithOpenZaakZaak([]),
+        ERFPACHT: {
+          status: 'OK',
+          content: {
+            dossiers: { dossiers: [] },
+            zaken: [
+              {
+                zaakNummer: 'ZAAK-2025-0000011488',
+                zaakOmschrijving: 'Wijzigen erfpacht',
+              },
+            ],
+          },
+        },
+      } as unknown as AppState);
+      const screen = render(<KlantContactThema />);
+
+      expect(
+        within(
+          screen.getByRole('table', {
+            name: 'Mijn communicatievoorkeuren per thema',
+          })
+        ).queryByRole('row', { name: /Erfpacht/ })
+      ).not.toBeInTheDocument();
+    });
+
+    test('links the voorkeur of the BFF to the zaak on the zaakIdentificatie', () => {
       const KlantContactThema = createMijnContactThemaComponent(
-        getStateWithErfpachtZaak([
+        getStateWithOpenZaakZaak([
           {
-            zaakIdentificatie: ZAAK_NUMMER,
+            zaakIdentificatie: ZAAK_IDENTIFICATIE,
             contactgegeven: {
               id: 'zaakadres-1',
               type: 'Telefoonnummer',
@@ -266,7 +272,7 @@ describe('KlantContactThema', () => {
         screen.getByRole('table', {
           name: 'Mijn communicatievoorkeuren per thema',
         })
-      ).getByRole('row', { name: /Erfpacht/ });
+      ).getByRole('row', { name: /Zaken/ });
 
       // Enige zaak van het thema heeft een voorkeur, dus geen 'standaard' meer.
       expect(within(row).getAllByRole('cell')[2]).toHaveTextContent(
@@ -276,7 +282,7 @@ describe('KlantContactThema', () => {
 
     test('does not show a voorkeur of a zaak that is not in the thema', () => {
       const KlantContactThema = createMijnContactThemaComponent(
-        getStateWithErfpachtZaak([
+        getStateWithOpenZaakZaak([
           {
             zaakIdentificatie: 'Z-24-2238078',
             contactgegeven: {
@@ -296,7 +302,7 @@ describe('KlantContactThema', () => {
         screen.getByRole('table', {
           name: 'Mijn communicatievoorkeuren per thema',
         })
-      ).getByRole('row', { name: /Erfpacht/ });
+      ).getByRole('row', { name: /Zaken/ });
 
       expect(within(row).getAllByText('standaard')).toHaveLength(2);
     });

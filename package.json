@@ -34,6 +34,7 @@
     "zgw:check": "ts-node ./src/scripts/zgw-koppelingen-check.ts",
     "zgw:seed": "ts-node ./src/scripts/zgw-testpersoon-seed.ts",
     "zgw:testzaken": "ts-node ./src/scripts/zgw-testzaken.ts",
+    "zgw:testzaken-aanmaken": "ts-node ./src/scripts/zgw-testzaken-aanmaken.ts",
     "lint": "eslint src --max-warnings 0 --quiet",
     "lint:fix": "eslint src --fix"
   },

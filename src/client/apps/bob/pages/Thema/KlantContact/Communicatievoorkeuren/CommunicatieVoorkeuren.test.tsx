@@ -4,7 +4,10 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommunicatieVoorkeuren } from './CommunicatieVoorkeuren.tsx';
-import type { ZaakVoorkeurThema } from './useZaakVoorkeurThemas.ts';
+import {
+  OPENZAAK_ZAKEN_THEMA_ID,
+  type ZaakVoorkeurThema,
+} from './useZaakVoorkeurThemas.ts';
 import type {
   ContactgegevenFrontend,
   ContactgegevenPerTypeFrontend,
@@ -16,8 +19,8 @@ import type { ApiResponse } from '../../../../../../../universal/helpers/api.ts'
 import { useAppStateStore } from '../../../../../../hooks/useAppStateStore.ts';
 import { themaConfig } from '../KlantContact-thema-config.ts';
 
-const ZAAK_1 = 'ZAAK-2025-0000011488';
-const ZAAK_2 = 'ZAAK-2025-0000010602';
+const ZAAK_1 = 'ZAAK-2026-0000000166';
+const ZAAK_2 = 'ZAAK-2026-0000000171';
 
 function createContactgegeven(
   contactgegeven: Pick<ContactgegevenFrontend, 'type' | 'value'> &
@@ -64,12 +67,12 @@ function getStandaardContactgegevens(
 
 const zaakThemas: ZaakVoorkeurThema[] = [
   {
-    id: 'ERFPACHT',
-    title: 'Erfpacht',
-    route: '/erfpacht',
+    id: OPENZAAK_ZAKEN_THEMA_ID,
+    title: 'Zaken',
+    route: themaConfig.route.path,
     zaken: [
-      { zaakIdentificatie: ZAAK_1, omschrijving: 'Wijzigen erfpachtrecht' },
-      { zaakIdentificatie: ZAAK_2, omschrijving: 'Overdracht erfpachtrecht' },
+      { zaakIdentificatie: ZAAK_1, omschrijving: 'Melding openbare ruimte' },
+      { zaakIdentificatie: ZAAK_2, omschrijving: 'Aanvraag parkeervergunning' },
     ],
   },
 ];
@@ -155,8 +158,8 @@ function getTable() {
   });
 }
 
-function getErfpachtRow() {
-  return within(getTable()).getByRole('row', { name: /Erfpacht/ });
+function getZakenRow() {
+  return within(getTable()).getByRole('row', { name: /Zaken/ });
 }
 
 describe('CommunicatieVoorkeuren', () => {
@@ -415,22 +418,23 @@ describe('CommunicatieVoorkeuren', () => {
 
     it('toont een dienst niet dubbel als er al een thema met zaken met die naam is', () => {
       renderCommunicatieVoorkeuren({
-        aangeslotenDiensten: [{ id: 'erfpacht', beschrijving: 'Erfpacht' }],
+        aangeslotenDiensten: [{ id: 'zaken', beschrijving: 'Zaken' }],
         zaakThemas,
       });
 
       expect(
-        within(getTable()).getAllByRole('row', { name: /Erfpacht/ })
+        within(getTable()).getAllByRole('row', { name: /Zaken/ })
       ).toHaveLength(1);
     });
 
     it('toont een thema met zaken als link naar het thema, met standaard zolang er geen voorkeur is', () => {
       renderCommunicatieVoorkeuren({ zaakThemas });
 
-      const row = getErfpachtRow();
-      expect(
-        within(row).getByRole('link', { name: 'Erfpacht' })
-      ).toHaveAttribute('href', '/erfpacht');
+      const row = getZakenRow();
+      expect(within(row).getByRole('link', { name: 'Zaken' })).toHaveAttribute(
+        'href',
+        themaConfig.route.path
+      );
       expect(within(row).getAllByText('standaard')).toHaveLength(2);
     });
 
@@ -440,7 +444,7 @@ describe('CommunicatieVoorkeuren', () => {
         zaakKanaalVoorkeuren: [smsVoorkeur],
       });
 
-      expect(getErfpachtRow()).toHaveTextContent('standaard, sms: 0612345678');
+      expect(getZakenRow()).toHaveTextContent('standaard, sms: 0612345678');
     });
 
     it('toont geen standaard als elke zaak een voorkeur heeft', () => {
@@ -455,7 +459,7 @@ describe('CommunicatieVoorkeuren', () => {
         ],
       });
 
-      const cellen = within(getErfpachtRow()).getAllByRole('cell');
+      const cellen = within(getZakenRow()).getAllByRole('cell');
       expect(cellen[2]).toHaveTextContent(/^sms: 0612345678/);
     });
   });
@@ -463,10 +467,10 @@ describe('CommunicatieVoorkeuren', () => {
   describe('keuze per zaak', () => {
     async function openModal(user: ReturnType<typeof userEvent.setup>) {
       await user.click(
-        within(getErfpachtRow()).getByRole('button', { name: 'wijzig' })
+        within(getZakenRow()).getByRole('button', { name: 'wijzig' })
       );
       expect(
-        screen.getByRole('heading', { name: 'Notificaties voor Erfpacht' })
+        screen.getByRole('heading', { name: 'Notificaties voor Zaken' })
       ).toBeInTheDocument();
     }
 
@@ -489,7 +493,7 @@ describe('CommunicatieVoorkeuren', () => {
       renderCommunicatieVoorkeuren({ zaakThemas });
 
       expect(
-        within(getErfpachtRow()).queryByRole('button', { name: 'wijzig' })
+        within(getZakenRow()).queryByRole('button', { name: 'wijzig' })
       ).not.toBeInTheDocument();
     });
 

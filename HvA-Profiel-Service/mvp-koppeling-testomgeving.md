@@ -190,7 +190,7 @@ Bij elk onderdeel horen tests (`*.test.ts` ernaast).
   - alleen open zaken (zonder einddatum), want een afgesloten zaak krijgt geen notificaties meer;
   - alleen de eerste 100;
   - alleen burgers, nog geen ondernemers (KVK).
-- **Thema "Zaken".** Het linkt naar Mijn contact zelf, want er is nog geen themapagina voor zaken uit OpenZaak. Een zaak die al bij Erfpacht staat, komt er niet nog een keer in.
+- **Thema "Zaken".** Het linkt naar Mijn contact zelf, want er is nog geen themapagina voor zaken uit OpenZaak. Het is het enige thema in de tabel met een kanaalkeuze per zaak. Erfpacht staat er niet meer in: de zaken van Erfpacht komen uit Vernise en niet uit OpenZaak, dus de eigenaarscontrole zou een keuze altijd weigeren (403).
 - **De eigenaarscontrole is streng.** Een kanaal kiezen kan alleen voor een zaak waarvan de ingelogde burger de initiator is (anders 403), en alleen voor een al geverifieerd adres van de burger zelf (anders 400). Zonder RSIN of bij een fout in OpenZaak weigert de BFF (503).
 - **Feature toggle.** De zaakvoorkeuren staan aan buiten productie (`KLANT_CONTACT.zaakvoorkeuren`). In productie verschijnt het thema Zaken niet.
 - **Open Notificaties is niet hetzelfde als NotifyNL.** De adressen eindigen allebei op `test.notifynl.nl`, maar het zijn twee aparte diensten:
