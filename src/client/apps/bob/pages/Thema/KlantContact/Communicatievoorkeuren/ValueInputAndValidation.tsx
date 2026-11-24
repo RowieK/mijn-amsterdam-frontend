@@ -51,6 +51,8 @@ export function ContactgegevenVerify({
     (isVerified) => {
       if (isVerified) {
         onVerified({ otp, value, type });
+      } else {
+        setIsInvalid(true);
       }
     }
   );

@@ -59,6 +59,12 @@ export function getAmsterdamKlantcontactConfig(): GemeenteKlantcontactConfig {
       url: getFromEnv('BFF_OPENKLANT_BASE_URL', false),
       token: getFromEnv('BFF_OPENKLANT_TOKEN', false),
     },
+    // Niet verplicht: alleen de verificatie van een telefoonnummer via de `openklant`-backend gebruikt dit.
+    notifyNl: {
+      url: getFromEnv('BFF_NOTIFYNL_VERIFY_BASE_URL', false),
+      apiKey: getFromEnv('BFF_NOTIFYNL_API_KEY', false),
+      authScheme: getFromEnv('BFF_NOTIFYNL_AUTH_SCHEME', false),
+    },
     openZaak: getOpenZaakConfig(),
     zaakVoorkeur: {
       referentie: zaakIdentificatieAlsReferentie,

@@ -181,6 +181,8 @@ process.env.BFF_OPENZAAK_JWT_SECRET = 'test-openzaak-jwt-secret';
 process.env.BFF_OPENZAAK_BRONORGANISATIE = '123456782';
 process.env.BFF_OPENKLANT_BASE_URL = `${remoteApiHost}/klantinteracties/api/v1/`;
 process.env.BFF_OPENKLANT_TOKEN = 'test-openklant-token';
+process.env.BFF_NOTIFYNL_VERIFY_BASE_URL = `${remoteApiHost}/notifynl-verify/api`;
+process.env.BFF_NOTIFYNL_API_KEY = 'test-notifynl-key';
 process.env.BFF_OPENNOTIFICATIES_BASE_URL = `${remoteApiHost}/notificaties/api/v1/`;
 
 process.env.BFF_POM_API_BASE_URL = `${remoteApiHost}/pom`;

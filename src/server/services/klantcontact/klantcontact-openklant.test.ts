@@ -5,6 +5,7 @@ import type {
   DigitaalAdresSource,
   PartijSource,
 } from './klantcontact-openklant-types.ts';
+import { getVerificationReference } from './klantcontact-notifynl.ts';
 import { createOpenKlantBackend } from './klantcontact-openklant.ts';
 import { getAmsterdamKlantcontactConfig } from './klantcontact-service-config.ts';
 import { remoteApiHost } from '../../../testing/setup.ts';
@@ -16,6 +17,7 @@ const BSN = '999990019';
 const KVK = '69599084';
 const PARTIJ_UUID = 'e7598ea9-5fd3-4645-8e45-7d08f28d49eb';
 const PARTIJ_URL = `${remoteApiHost}${BASE_PATH}/partijen/${PARTIJ_UUID}`;
+const NOTIFYNL_PATH = '/notifynl-verify/api';
 
 function getAuth(
   profileType: ProfileType = 'private',
@@ -503,6 +505,129 @@ describe('klantcontact-openklant', () => {
       expect(createMock.pendingMocks()).toHaveLength(1); // niet aangeroepen
     });
 
+    describe('sms-verificatie via Notify NL', () => {
+      test('laat Notify NL een sms sturen naar een nog niet geverifieerd mobiel nummer en maakt daarna het adres aan', async () => {
+        mockPartijen([partij([])]);
+        let notifyBody: unknown;
+        let notifyAuthorization: string | undefined;
+        remoteApi
+          .post(`${NOTIFYNL_PATH}/verification-requests`, (body) => {
+            notifyBody = body;
+            return true;
+          })
+          .reply(201, function (this: ReplyFnContext) {
+            notifyAuthorization = this.req.headers.authorization;
+            return { success: true };
+          });
+        let body: unknown;
+        mockCreate((requestBody) => (body = requestBody));
+
+        const response = await backend.createContactgegeven(
+          authProfileAndToken,
+          'Telefoonnummer',
+          '06 12345678'
+        );
+
+        expect(notifyBody).toEqual({
+          phoneNumber: '+31612345678',
+          reference: getVerificationReference(
+            authProfileAndToken,
+            '+31612345678'
+          ),
+        });
+        expect(notifyAuthorization).toBe('ApiKey-v1 test-notifynl-key');
+        expect(body).toMatchObject({
+          adres: '+31612345678',
+          soortDigitaalAdres: 'telefoonnummer',
+        });
+        expect(body).not.toHaveProperty('verificatieDatum');
+        expect(response.status).toBe('OK');
+        expect(response.content).toMatchObject({
+          type: 'Telefoonnummer',
+          isVerified: false,
+        });
+      });
+
+      test('maakt geen adres aan als Notify NL de sms niet kan versturen', async () => {
+        mockPartijen([partij([])]);
+        remoteApi
+          .post(`${NOTIFYNL_PATH}/verification-requests`)
+          .reply(500, {});
+        const createMock = remoteApi
+          .post(`${BASE_PATH}/digitaleadressen`)
+          .reply(201, digitaalAdres());
+
+        const response = await backend.createContactgegeven(
+          authProfileAndToken,
+          'Telefoonnummer',
+          '0612345678'
+        );
+
+        expect(response).toMatchObject({ status: 'ERROR', content: null });
+        expect(createMock.pendingMocks()).toHaveLength(1); // niet aangeroepen
+      });
+
+      test('weigert met 503 zonder Notify NL-configuratie en maakt niets aan', async () => {
+        mockPartijen([partij([])]);
+        const createMock = remoteApi
+          .post(`${BASE_PATH}/digitaleadressen`)
+          .reply(201, digitaalAdres());
+
+        const response = await createOpenKlantBackend({
+          ...config,
+          notifyNl: undefined,
+        }).createContactgegeven(
+          authProfileAndToken,
+          'Telefoonnummer',
+          '0612345678'
+        );
+
+        expect(response).toMatchObject({ status: 'ERROR', code: 503 });
+        expect(createMock.pendingMocks()).toHaveLength(1); // niet aangeroepen
+      });
+
+      test('stuurt geen sms als het nummer al geverifieerd is', async () => {
+        mockPartijen([
+          partij([
+            digitaalAdres({
+              adres: '+31612345678',
+              soortDigitaalAdres: 'telefoonnummer',
+            }),
+          ]),
+        ]);
+        const notifyMock = remoteApi
+          .post(`${NOTIFYNL_PATH}/verification-requests`)
+          .reply(201, { success: true });
+        mockCreate();
+
+        const response = await backend.createContactgegeven(
+          authProfileAndToken,
+          'Telefoonnummer',
+          '0612345678',
+          { referentie: 'ZAAK-2026-0000000171', isDefault: false }
+        );
+
+        expect(response.status).toBe('OK');
+        expect(notifyMock.pendingMocks()).toHaveLength(1); // niet aangeroepen
+      });
+
+      test('stuurt geen sms voor een e-mailadres', async () => {
+        mockPartijen([partij([])]);
+        const notifyMock = remoteApi
+          .post(`${NOTIFYNL_PATH}/verification-requests`)
+          .reply(201, { success: true });
+        mockCreate();
+
+        await backend.createContactgegeven(
+          authProfileAndToken,
+          'Email',
+          'mokum@example.org'
+        );
+
+        expect(notifyMock.pendingMocks()).toHaveLength(1); // niet aangeroepen
+      });
+    });
+
     test('geeft een foutresultaat als Open Klant het adres weigert', async () => {
       mockPartijen([partij([])]);
       remoteApi.post(`${BASE_PATH}/digitaleadressen`).reply(400, {});
@@ -583,7 +708,32 @@ describe('klantcontact-openklant', () => {
   });
 
   describe('verifyContactgegeven', () => {
-    test('wordt niet ondersteund en doet geen aanroep', async () => {
+    const ONGEVERIFIEERD_NUMMER = digitaalAdres({
+      uuid: '44444444-4444-4444-8444-444444444444',
+      adres: '+31612345678',
+      soortDigitaalAdres: 'telefoonnummer',
+      verificatieDatum: null,
+    });
+    const verifyProps = {
+      type: 'Telefoonnummer',
+      value: '0612345678',
+      code: '123456',
+    } as const;
+
+    function mockNotifyVerify(
+      status: number,
+      reply: object,
+      onBody: (body: unknown) => void = () => undefined
+    ) {
+      return remoteApi
+        .post(`${NOTIFYNL_PATH}/verification-requests/verify`, (body) => {
+          onBody(body);
+          return true;
+        })
+        .reply(status, reply);
+    }
+
+    test('ondersteunt e-mail niet en doet geen aanroep', async () => {
       const response = await backend.verifyContactgegeven(authProfileAndToken, {
         type: 'Email',
         value: 'mokum@example.org',
@@ -595,6 +745,171 @@ describe('klantcontact-openklant', () => {
         content: null,
         code: 501,
       });
+    });
+
+    test('weigert met 503 zonder Notify NL-configuratie', async () => {
+      const response = await createOpenKlantBackend({
+        ...config,
+        notifyNl: undefined,
+      }).verifyContactgegeven(authProfileAndToken, verifyProps);
+
+      expect(response).toMatchObject({ status: 'ERROR', code: 503 });
+    });
+
+    test('geeft een foutresultaat bij een ongeldig mobiel nummer en doet geen aanroep', async () => {
+      const response = await backend.verifyContactgegeven(authProfileAndToken, {
+        ...verifyProps,
+        value: '0201234567',
+      });
+
+      expect(response).toMatchObject({ status: 'ERROR', code: 400 });
+    });
+
+    test('controleert de code bij Notify NL en zet daarna de verificatiedatum in Open Klant', async () => {
+      mockPartijen([partij([ONGEVERIFIEERD_NUMMER])]);
+      let notifyBody: unknown;
+      mockNotifyVerify(
+        200,
+        { verified: true, verifiedOn: '2026-11-24T16:30:00Z' },
+        (body) => (notifyBody = body)
+      );
+      let patchBody: unknown;
+      remoteApi
+        .patch(
+          `${BASE_PATH}/digitaleadressen/${ONGEVERIFIEERD_NUMMER.uuid}`,
+          (body) => {
+            patchBody = body;
+            return true;
+          }
+        )
+        .reply(200, { ...ONGEVERIFIEERD_NUMMER, verificatieDatum: '2026-11-24' });
+
+      const response = await backend.verifyContactgegeven(
+        authProfileAndToken,
+        verifyProps
+      );
+
+      expect(notifyBody).toEqual({
+        code: '123456',
+        reference: getVerificationReference(
+          authProfileAndToken,
+          '+31612345678'
+        ),
+      });
+      expect(patchBody).toEqual({ verificatieDatum: '2026-11-24' });
+      expect(response).toMatchObject({
+        status: 'OK',
+        content: { verified: true },
+      });
+    });
+
+    test('zet de verificatiedatum op alle ongeverifieerde adressen met hetzelfde nummer', async () => {
+      const tweede = {
+        ...ONGEVERIFIEERD_NUMMER,
+        uuid: '55555555-5555-4555-8555-555555555555',
+      };
+      mockPartijen([partij([ONGEVERIFIEERD_NUMMER, tweede])]);
+      mockNotifyVerify(200, { verified: true, verifiedOn: '2026-11-24' });
+      const patches = [ONGEVERIFIEERD_NUMMER, tweede].map((adres) =>
+        remoteApi
+          .patch(`${BASE_PATH}/digitaleadressen/${adres.uuid}`)
+          .reply(200, {})
+      );
+
+      const response = await backend.verifyContactgegeven(
+        authProfileAndToken,
+        verifyProps
+      );
+
+      expect(response).toMatchObject({
+        status: 'OK',
+        content: { verified: true },
+      });
+      patches.forEach((patch) => expect(patch.isDone()).toBe(true));
+    });
+
+    test.each([400, 404])(
+      'geeft verified false bij een onjuiste of onbekende code (%i) en wijzigt niets',
+      async (status) => {
+        mockPartijen([partij([ONGEVERIFIEERD_NUMMER])]);
+        mockNotifyVerify(status, { verified: false, reason: 'invalid' });
+        const patch = remoteApi
+          .patch(`${BASE_PATH}/digitaleadressen/${ONGEVERIFIEERD_NUMMER.uuid}`)
+          .reply(200, {});
+
+        const response = await backend.verifyContactgegeven(
+          authProfileAndToken,
+          verifyProps
+        );
+
+        expect(response).toMatchObject({
+          status: 'OK',
+          content: { verified: false },
+        });
+        expect(patch.isDone()).toBe(false);
+      }
+    );
+
+    test('controleert geen code voor een nummer dat niet bij de gebruiker hoort', async () => {
+      mockPartijen([partij([])]);
+      const notifyMock = mockNotifyVerify(200, { verified: true });
+
+      const response = await backend.verifyContactgegeven(
+        authProfileAndToken,
+        verifyProps
+      );
+
+      expect(response).toMatchObject({
+        status: 'ERROR',
+        content: null,
+        code: 404,
+      });
+      expect(notifyMock.isDone()).toBe(false);
+    });
+
+    test('geeft verified true zonder aanroep naar Notify NL als het nummer al geverifieerd is', async () => {
+      mockPartijen([
+        partij([{ ...ONGEVERIFIEERD_NUMMER, verificatieDatum: '2026-01-31' }]),
+      ]);
+      const notifyMock = mockNotifyVerify(200, { verified: true });
+
+      const response = await backend.verifyContactgegeven(
+        authProfileAndToken,
+        verifyProps
+      );
+
+      expect(response).toMatchObject({
+        status: 'OK',
+        content: { verified: true },
+      });
+      expect(notifyMock.isDone()).toBe(false);
+    });
+
+    test('geeft een foutresultaat als Notify NL een fout geeft', async () => {
+      mockPartijen([partij([ONGEVERIFIEERD_NUMMER])]);
+      mockNotifyVerify(500, {});
+
+      const response = await backend.verifyContactgegeven(
+        authProfileAndToken,
+        verifyProps
+      );
+
+      expect(response).toMatchObject({ status: 'ERROR', content: null });
+    });
+
+    test('geeft een foutresultaat als Open Klant de verificatiedatum weigert', async () => {
+      mockPartijen([partij([ONGEVERIFIEERD_NUMMER])]);
+      mockNotifyVerify(200, { verified: true, verifiedOn: '2026-11-24' });
+      remoteApi
+        .patch(`${BASE_PATH}/digitaleadressen/${ONGEVERIFIEERD_NUMMER.uuid}`)
+        .reply(403, {});
+
+      const response = await backend.verifyContactgegeven(
+        authProfileAndToken,
+        verifyProps
+      );
+
+      expect(response).toMatchObject({ status: 'ERROR', content: null });
     });
   });
 

@@ -22,6 +22,9 @@ export type GemeenteKlantcontactConfig = {
   profielservice: { url?: string };
   // Basis-URL en token van de Klantinteracties API. Alleen nodig bij de `openklant`-backend.
   openKlant?: { url?: string; token?: string };
+  // De verificatieservice van Notify NL: verstuurt de sms met de code en controleert die. Alleen nodig bij de
+  // `openklant`-backend. Zonder deze configuratie kan een telefoonnummer niet worden geverifieerd (fail closed).
+  notifyNl?: { url?: string; apiKey?: string; authScheme?: string };
   // Nodig voor `zaakIsVanGebruiker`. Zonder Open Zaak weigert de controle altijd (fail closed).
   openZaak?: OpenZaakConfig;
   zaakVoorkeur: {
