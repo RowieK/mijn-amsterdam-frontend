@@ -349,6 +349,10 @@ describe('getAmsterdamKlantcontactConfig', () => {
     expect(config.zaakVoorkeur.kanalen).toEqual(['Email', 'Telefoonnummer']);
   });
 
+  test('kent nog geen themakeuze: bij de zaaktypen uit Open Zaak hoort (nog) geen dienst', () => {
+    expect(config.themaVoorkeur).toBeUndefined();
+  });
+
   test('gebruikt Open Zaak uit de omgeving voor de zaakcontrole', () => {
     expect(config.openZaak).toEqual({
       url: `${remoteApiHost}/zaken/api/v1/`,

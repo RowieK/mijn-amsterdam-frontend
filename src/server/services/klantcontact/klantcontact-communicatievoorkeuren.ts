@@ -8,6 +8,7 @@ import {
   getMostRecentByContactgegevenType,
   getThemaId,
   getThemaKanaalVoorkeuren,
+  getThemaKeuzeThemaIds,
   getValidZaakReferentie,
   getZaakKanaalVoorkeuren,
   withoutThemaContactgegevens,
@@ -141,6 +142,7 @@ export async function fetchCommunicatievoorkeuren(
     themaKanaalVoorkeuren: config
       ? getThemaKanaalVoorkeuren(config, contactgegevens)
       : [],
+    themaKeuzeThemaIds: config ? getThemaKeuzeThemaIds(config) : [],
     // Zonder zaken uit Open Zaak blijft de rest van de voorkeuren bruikbaar.
     zaken: zakenResponse.status === 'OK' ? zakenResponse.content : [],
   });

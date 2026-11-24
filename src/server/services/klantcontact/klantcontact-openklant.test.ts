@@ -263,6 +263,37 @@ describe('klantcontact-openklant', () => {
       expect(response).toMatchObject({ status: 'ERROR', content: null });
     });
 
+    test('vindt de partij ook op een volgende pagina', async () => {
+      const query = {
+        partijIdentificator__objectId: BSN,
+        partijIdentificator__codeObjecttype: 'natuurlijk_persoon',
+        partijIdentificator__codeSoortObjectId: 'bsn',
+        expand: 'digitaleAdressen',
+      };
+      const anderePartij = partij([], {
+        url: `${remoteApiHost}${BASE_PATH}/partijen/andere`,
+        partijIdentificatoren: [],
+      });
+      remoteApi
+        .get(`${BASE_PATH}/partijen`)
+        .query(query)
+        .reply(200, {
+          count: 2,
+          next: `${remoteApiHost}${BASE_PATH}/partijen?${new URLSearchParams({ ...query, page: '2' })}`,
+          previous: null,
+          results: [anderePartij],
+        });
+      remoteApi
+        .get(`${BASE_PATH}/partijen`)
+        .query({ ...query, page: '2' })
+        .reply(200, paginated([partij([digitaalAdres()])]));
+
+      const response = await backend.fetchContactgegevens(authProfileAndToken);
+
+      expect(response.status).toBe('OK');
+      expect(response.content).toHaveLength(1);
+    });
+
     test('geeft een foutresultaat als Open Klant een fout geeft', async () => {
       remoteApi.get(`${BASE_PATH}/partijen`).query(true).reply(500);
 

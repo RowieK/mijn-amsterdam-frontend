@@ -2,8 +2,15 @@ import { forTesting } from './zgw-koppelingen-check.ts';
 import { remoteApiHost } from '../testing/setup.ts';
 import { remoteApi } from '../testing/utils.ts';
 
-const { isBasisUrl, looksLikeJwt, getConfigProblemen, checkVerbinding } =
-  forTesting;
+const {
+  isBasisUrl,
+  looksLikeJwt,
+  getConfigProblemen,
+  checkVerbinding,
+  getCatalogiUrl,
+  getOnderwerpObjectIds,
+  formatKlantcontact,
+} = forTesting;
 
 // Header en payload van een HS256-JWT; de handtekening doet er voor de herkenning niet toe.
 const JWT = `${Buffer.from('{"alg":"HS256","typ":"JWT"}').toString('base64url')}.${Buffer.from('{"iss":"client"}').toString('base64url')}.handtekening`;
@@ -99,6 +106,72 @@ describe('zgw-koppelingen-check', () => {
       expect(problemen.openZaak).toEqual([
         expect.stringContaining('bevat een JWT'),
       ]);
+    });
+  });
+
+  describe('getCatalogiUrl', () => {
+    test('leidt de Catalogi API af uit de Zaken API van hetzelfde Open Zaak', () => {
+      expect(getCatalogiUrl('https://openzaak.example.nl/zaken/api/v1/')).toBe(
+        'https://openzaak.example.nl/catalogi/api/v1/'
+      );
+    });
+
+    test('geeft null als de URL niet naar de Zaken API wijst', () => {
+      expect(getCatalogiUrl('https://openzaak.example.nl/api/v1/')).toBeNull();
+    });
+  });
+
+  describe('klantcontacten van de OMC', () => {
+    const klantcontact = {
+      uuid: '1',
+      kanaal: 'Email',
+      onderwerp: 'Zaak ZAAK-2026-0000000166 gewijzigd',
+      indicatieContactGelukt: true,
+      plaatsgevondenOp: '2026-11-23T10:00:00Z',
+      metadata: { notifyNotificationId: 'abc-123' },
+    };
+
+    test('leest de objectId van de onderwerpobjecten, in camelCase en snake_case', () => {
+      expect(
+        getOnderwerpObjectIds({
+          ...klantcontact,
+          _expand: {
+            gingOverOnderwerpobjecten: [
+              { onderwerpobjectidentificator: { objectId: 'zaak-uuid' } },
+              { onderwerpobjectidentificator: null },
+            ],
+          },
+        })
+      ).toEqual(['zaak-uuid']);
+      expect(
+        getOnderwerpObjectIds({
+          ...klantcontact,
+          _expand: {
+            ging_over_onderwerpobjecten: [
+              { onderwerpobjectidentificator: { objectId: 'ZAAK-1' } },
+            ],
+          },
+        })
+      ).toEqual(['ZAAK-1']);
+      expect(getOnderwerpObjectIds(klantcontact)).toEqual([]);
+    });
+
+    test('toont datum, kanaal, of het gelukt is, onderwerp en het bericht-id van NotifyNL', () => {
+      expect(formatKlantcontact(klantcontact)).toBe(
+        '2026-11-23T10:00:00Z, kanaal Email, gelukt, onderwerp "Zaak ZAAK-2026-0000000166 gewijzigd", bericht abc-123 bij NotifyNL'
+      );
+    });
+
+    test('laat ontbrekende gegevens weg', () => {
+      expect(
+        formatKlantcontact({
+          ...klantcontact,
+          onderwerp: '',
+          indicatieContactGelukt: null,
+          plaatsgevondenOp: null,
+          metadata: null,
+        })
+      ).toBe('zonder datum, kanaal Email, niet bekend of het gelukt is');
     });
   });
 

@@ -119,16 +119,25 @@ export type ThemaKanaalVoorkeurPayloadFrontend = {
   value: string;
 };
 
+export type ZaakVoorkeurZaaktypeFrontend = {
+  identificatie: string;
+  omschrijving: string;
+};
+
 // Een zaak in Open Zaak waarvoor de klant een kanaal kan kiezen.
 export type ZaakVoorkeurZaakFrontend = {
   zaakIdentificatie: string;
   omschrijving: string;
+  // De frontend toont de zaken per zaaktype. `null` als het zaaktype niet op te halen was.
+  zaaktype: ZaakVoorkeurZaaktypeFrontend | null;
 };
 
 export type CommunicatievoorkeurenResponseFrontend = {
   standaardContactgegevens: ContactgegevenPerTypeFrontend | null;
   zaakKanaalVoorkeuren: ZaakKanaalVoorkeurFrontend[];
   themaKanaalVoorkeuren?: ThemaKanaalVoorkeurFrontend[];
+  // De thema's waarvoor de BFF een themakeuze accepteert. Alleen daar toont de frontend die keuze.
+  themaKeuzeThemaIds?: string[];
   // Alle eigen e-mailadressen. standaardContactgegevens.Email is daar het eerste van.
   emailadressen?: ContactgegevenFrontend[];
   aangeslotenDiensten?: DienstSource[];

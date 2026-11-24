@@ -12,6 +12,7 @@ import {
 } from './klantcontact-communicatievoorkeuren.ts';
 import {
   getThemaKanaalVoorkeuren,
+  getThemaKeuzeThemaIds,
   transformContactgegevenSource,
   withoutThemaContactgegevens,
   zaakIdentificatieAlsReferentie,
@@ -163,6 +164,31 @@ describe('getThemaKanaalVoorkeuren', () => {
   it('geeft een lege lijst als de profielresponse mislukt is', () => {
     expect(
       getThemaKanaalVoorkeuren(config, apiErrorResult('Profiel mislukt', null))
+    ).toEqual([]);
+  });
+});
+
+describe('getThemaKeuzeThemaIds', () => {
+  it("geeft alleen de thema's met een dienst en een kanaal dat de klant kan kiezen", () => {
+    // test-thema-b staat alleen de Berichtenbox toe: geen zaakkanaal, dus de BFF weigert daar elke keuze.
+    expect(getThemaKeuzeThemaIds(config)).toEqual(['test-thema-a']);
+  });
+
+  it("geeft geen thema's als de gemeente geen themavoorkeur kent", () => {
+    expect(
+      getThemaKeuzeThemaIds({ ...config, themaVoorkeur: undefined })
+    ).toEqual([]);
+  });
+
+  it('slaat een thema met kanalen maar zonder dienst over', () => {
+    expect(
+      getThemaKeuzeThemaIds({
+        ...config,
+        themaVoorkeur: {
+          kanalen: { 'zonder-dienst': ['Email'] },
+          scopes: {},
+        },
+      })
     ).toEqual([]);
   });
 });
@@ -508,6 +534,7 @@ describe('fetchCommunicatievoorkeuren met themakeuzes', () => {
         }),
       },
     ]);
+    expect(response.content?.themaKeuzeThemaIds).toEqual(['test-thema-a']);
   });
 
   it('geeft geen themakeuzes zonder config', async () => {
@@ -519,5 +546,6 @@ describe('fetchCommunicatievoorkeuren met themakeuzes', () => {
     );
 
     expect(response.content?.themaKanaalVoorkeuren).toEqual([]);
+    expect(response.content?.themaKeuzeThemaIds).toEqual([]);
   });
 });

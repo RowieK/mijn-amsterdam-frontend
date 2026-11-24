@@ -5,10 +5,10 @@ import {
   type OpenZaakConfig,
 } from './openzaak-service-config.ts';
 import type {
-  OpenZaakPaginatedSource,
   RolSource,
   ZaakMetRollenSource,
   ZaakSource,
+  ZaaktypeSource,
 } from './openzaak-types.ts';
 import {
   apiErrorResult,
@@ -21,7 +21,9 @@ import { requestData } from '../../helpers/source-api-request.ts';
 import {
   createZgwJwt,
   hasZgwJwtCredentials,
+  isSameOrigin,
   joinApiUrl,
+  requestAllPages,
 } from '../../helpers/zgw-api-helpers.ts';
 
 type ConfiguredOpenZaakConfig = OpenZaakConfig & {
@@ -77,21 +79,27 @@ export async function fetchZaakByIdentificatie(
         bronorganisatie: config.bronorganisatie,
       },
       formatUrl: ({ url }) => joinApiUrl(String(url), 'zaken'),
-      transformResponse: (response: OpenZaakPaginatedSource<ZaakSource>) =>
-        // De filters zijn exact, maar we vertrouwen daar niet alleen op bij een eigenaarschapscontrole.
-        response.results.find(
-          (zaak) =>
-            zaak.identificatie === zaakIdentificatie &&
-            zaak.bronorganisatie === config.bronorganisatie
-        ) ?? null,
       enableCache: false,
     }
   );
 
-  return requestData<ZaakSource | null>(apiConfig);
+  const zaken = await requestAllPages<ZaakSource>(apiConfig);
+
+  if (zaken.status !== 'OK') {
+    return zaken;
+  }
+
+  // De filters zijn exact, maar we vertrouwen daar niet alleen op bij een eigenaarschapscontrole.
+  return apiSuccessResult(
+    zaken.content.find(
+      (zaak) =>
+        zaak.identificatie === zaakIdentificatie &&
+        zaak.bronorganisatie === config.bronorganisatie
+    ) ?? null
+  );
 }
 
-// Een zaak heeft hoogstens één initiator, dus de eerste pagina volstaat.
+// De rollen met omschrijving "initiator" van een zaak, van alle pagina's.
 export async function fetchInitiatorRollen(
   config: OpenZaakConfig,
   zaakUrl: string
@@ -110,13 +118,11 @@ export async function fetchInitiatorRollen(
         omschrijvingGeneriek: ROL_OMSCHRIJVING_GENERIEK_INITIATOR,
       },
       formatUrl: ({ url }) => joinApiUrl(String(url), 'rollen'),
-      transformResponse: (response: OpenZaakPaginatedSource<RolSource>) =>
-        response.results,
       enableCache: false,
     }
   );
 
-  return requestData<RolSource[]>(apiConfig);
+  return requestAllPages<RolSource>(apiConfig);
 }
 
 // Is de rol van de ingelogde gebruiker? Een BSN-profiel moet overeenkomen met `inpBsn` van een natuurlijk persoon,
@@ -183,7 +189,7 @@ export async function zaakIsVanGebruiker(
 // De zaken waarvan de ingelogde gebruiker initiator is, binnen de bronorganisatie van de gemeente.
 // Het BSN-filter kijkt naar alle rollen van een zaak, en `rol__omschrijvingGeneriek` hoeft niet dezelfde rol
 // te treffen. Daarom komen de rollen mee (`expand=rollen`) en controleren we de initiator zelf.
-// Alleen de eerste pagina (100 zaken): genoeg voor een burger.
+// Alle pagina's: de burger ziet al zijn zaken.
 // Ondernemers volgen later: een KVK-nummer staat bij een niet-natuurlijk persoon of een vestiging, twee filters.
 export async function fetchZakenVanGebruiker(
   config: OpenZaakConfig,
@@ -211,19 +217,74 @@ export async function fetchZakenVanGebruiker(
         expand: 'rollen',
       },
       formatUrl: ({ url }) => joinApiUrl(String(url), 'zaken'),
-      transformResponse: (
-        response: OpenZaakPaginatedSource<ZaakMetRollenSource>
-      ) =>
-        response.results.filter(
-          (zaak) =>
-            zaak.bronorganisatie === config.bronorganisatie &&
-            (zaak._expand?.rollen ?? []).some((rol) =>
-              rolIsVanProfiel(rol, profile)
-            )
-        ),
       enableCache: false,
     }
   );
 
-  return requestData<ZaakMetRollenSource[]>(apiConfig);
+  const zaken = await requestAllPages<ZaakMetRollenSource>(apiConfig);
+
+  if (zaken.status !== 'OK') {
+    return zaken;
+  }
+
+  return apiSuccessResult(
+    zaken.content.filter(
+      (zaak) =>
+        zaak.bronorganisatie === config.bronorganisatie &&
+        (zaak._expand?.rollen ?? []).some((rol) =>
+          rolIsVanProfiel(rol, profile)
+        )
+    )
+  );
+}
+
+// Een zaaktype uit de Catalogi API van hetzelfde Open Zaak. Daarvoor heeft de client de scope `catalogi.lezen` nodig.
+export async function fetchZaaktype(
+  config: OpenZaakConfig,
+  zaaktypeUrl: string
+): Promise<ApiResponse<ZaaktypeSource>> {
+  if (!isConfigured(config)) {
+    return notConfiguredResult();
+  }
+
+  // Ons token gaat alleen naar Open Zaak zelf. Het zaaktype van een zaak kan in een catalogus elders staan.
+  if (!isSameOrigin(zaaktypeUrl, config.url)) {
+    return apiErrorResult(
+      'Het zaaktype staat niet in Open Zaak',
+      null,
+      HttpStatusCode.BadRequest
+    );
+  }
+
+  const apiConfig = getCustomApiConfig(
+    { url: zaaktypeUrl },
+    {
+      method: 'GET',
+      headers: await getHeaders(config),
+      enableCache: false,
+    }
+  );
+
+  return requestData<ZaaktypeSource>(apiConfig);
+}
+
+// Eén aanroep per zaaktype, ook als meer zaken hetzelfde zaaktype hebben. Een zaaktype dat niet op te halen is,
+// ontbreekt in het resultaat: de zaak blijft dan zonder zaaktype zichtbaar.
+export async function fetchZaaktypen(
+  config: OpenZaakConfig,
+  zaaktypeUrls: string[]
+): Promise<Map<string, ZaaktypeSource>> {
+  const urls = [...new Set(zaaktypeUrls)];
+  const responses = await Promise.all(
+    urls.map((url) => fetchZaaktype(config, url))
+  );
+
+  return new Map(
+    urls.flatMap((url, index) => {
+      const response = responses[index];
+      return response.status === 'OK' && response.content.identificatie
+        ? [[url, response.content] as const]
+        : [];
+    })
+  );
 }

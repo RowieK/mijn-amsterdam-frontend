@@ -4,6 +4,8 @@ import type { ReplyFnContext } from 'nock';
 import {
   fetchInitiatorRollen,
   fetchZaakByIdentificatie,
+  fetchZaaktype,
+  fetchZaaktypen,
   fetchZakenVanGebruiker,
   rolIsVanProfiel,
   zaakIsVanGebruiker,
@@ -20,6 +22,8 @@ import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
 const BASE_PATH = '/zaken/api/v1';
 const ZAAK_IDENTIFICATIE = 'ZAAK-2026-0000000171';
 const ZAAK_URL = `${remoteApiHost}${BASE_PATH}/zaken/db7d581d-ad7f-497b-8476-efa4d15e364a`;
+const ZAAKTYPEN_PATH = '/catalogi/api/v1/zaaktypen';
+const ZAAKTYPE_URL = `${remoteApiHost}${ZAAKTYPEN_PATH}/4f2b2f4e-6c4b-4f4f-9a4b-1c2d3e4f5a6b`;
 const BSN = '999990019';
 const KVK = '69599084';
 
@@ -413,6 +417,7 @@ describe('openzaak-api-service', () => {
     ): ZaakMetRollenSource {
       return {
         ...zaak,
+        zaaktype: ZAAKTYPE_URL,
         omschrijving: 'Melding openbare ruimte',
         startdatum: '2026-03-01',
         einddatum: null,
@@ -484,6 +489,39 @@ describe('openzaak-api-service', () => {
       expect(response).toEqual({ status: 'OK', content: [] });
     });
 
+    test("haalt de zaken van alle pagina's op", async () => {
+      const query = {
+        bronorganisatie: '123456782',
+        rol__betrokkeneIdentificatie__natuurlijkPersoon__inpBsn: BSN,
+        rol__omschrijvingGeneriek: 'initiator',
+        expand: 'rollen',
+      };
+      const zaak2 = zaakMetRollen({
+        url: `${ZAAK_URL}-2`,
+        identificatie: 'ZAAK-2026-0000000172',
+      });
+      remoteApi
+        .get(`${BASE_PATH}/zaken`)
+        .query(query)
+        .reply(200, {
+          count: 2,
+          next: `${remoteApiHost}${BASE_PATH}/zaken?${new URLSearchParams({ ...query, page: '2' })}`,
+          previous: null,
+          results: [zaakMetRollen()],
+        });
+      remoteApi
+        .get(`${BASE_PATH}/zaken`)
+        .query({ ...query, page: '2' })
+        .reply(200, paginated([zaak2]));
+
+      const response = await fetchZakenVanGebruiker(config, getAuth());
+
+      expect(response).toEqual({
+        status: 'OK',
+        content: [zaakMetRollen(), zaak2],
+      });
+    });
+
     test('geeft een lege lijst voor een ondernemer, zonder aanroep', async () => {
       const response = await fetchZakenVanGebruiker(
         config,
@@ -505,6 +543,84 @@ describe('openzaak-api-service', () => {
       const response = await fetchZakenVanGebruiker({}, getAuth());
 
       expect(response).toMatchObject({ status: 'ERROR', code: 503 });
+    });
+  });
+
+  describe('fetchZaaktype', () => {
+    const zaaktype = {
+      url: ZAAKTYPE_URL,
+      identificatie: 'MELDING-OPENBARE-RUIMTE',
+      omschrijving: 'Melding openbare ruimte',
+    };
+
+    test('haalt het zaaktype op uit de Catalogi API, met een token', async () => {
+      let authorization: string | undefined;
+      remoteApi
+        .get(`${ZAAKTYPEN_PATH}/4f2b2f4e-6c4b-4f4f-9a4b-1c2d3e4f5a6b`)
+        .reply(function (this: ReplyFnContext) {
+          authorization = this.req.headers.authorization as string;
+          return [200, zaaktype];
+        });
+
+      const response = await fetchZaaktype(config, ZAAKTYPE_URL);
+
+      expect(response).toEqual({ status: 'OK', content: zaaktype });
+      expect(authorization).toMatch(/^Bearer /);
+    });
+
+    test.each([
+      [
+        'een andere host',
+        'https://catalogus.example.org/catalogi/api/v1/zaaktypen/1',
+      ],
+      ['geen URL', 'zaaktype-1'],
+    ])('stuurt het token niet mee naar %s', async (_naam, zaaktypeUrl) => {
+      const response = await fetchZaaktype(config, zaaktypeUrl);
+
+      expect(response).toMatchObject({ status: 'ERROR', code: 400 });
+    });
+
+    test('geeft 503 zonder configuratie', async () => {
+      const response = await fetchZaaktype({}, ZAAKTYPE_URL);
+
+      expect(response).toMatchObject({ status: 'ERROR', code: 503 });
+    });
+  });
+
+  describe('fetchZaaktypen', () => {
+    test('haalt elk zaaktype één keer op en laat een mislukt zaaktype weg', async () => {
+      const anderZaaktypeUrl = `${remoteApiHost}${ZAAKTYPEN_PATH}/2`;
+      const zaaktype = {
+        url: ZAAKTYPE_URL,
+        identificatie: 'MELDING-OPENBARE-RUIMTE',
+        omschrijving: 'Melding openbare ruimte',
+      };
+      remoteApi
+        .get(`${ZAAKTYPEN_PATH}/4f2b2f4e-6c4b-4f4f-9a4b-1c2d3e4f5a6b`)
+        .once()
+        .reply(200, zaaktype);
+      remoteApi.get(`${ZAAKTYPEN_PATH}/2`).reply(403);
+
+      const zaaktypen = await fetchZaaktypen(config, [
+        ZAAKTYPE_URL,
+        anderZaaktypeUrl,
+        ZAAKTYPE_URL,
+      ]);
+
+      expect([...zaaktypen]).toEqual([[ZAAKTYPE_URL, zaaktype]]);
+    });
+
+    test('laat een zaaktype zonder identificatie weg', async () => {
+      remoteApi
+        .get(`${ZAAKTYPEN_PATH}/4f2b2f4e-6c4b-4f4f-9a4b-1c2d3e4f5a6b`)
+        .reply(200, {
+          url: ZAAKTYPE_URL,
+          omschrijving: 'Zonder identificatie',
+        });
+
+      const zaaktypen = await fetchZaaktypen(config, [ZAAKTYPE_URL]);
+
+      expect(zaaktypen.size).toBe(0);
     });
   });
 });

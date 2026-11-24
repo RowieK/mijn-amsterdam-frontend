@@ -66,6 +66,7 @@ type CommunicatieVoorkeurenProps = {
   emailadressen?: ContactgegevenFrontend[];
   zaakKanaalVoorkeuren?: ZaakKanaalVoorkeurFrontend[];
   themaKanaalVoorkeuren?: ThemaKanaalVoorkeurFrontend[];
+  themaKeuzeThemaIds?: string[];
   zaakThemas?: ZaakVoorkeurThema[];
 };
 
@@ -75,6 +76,7 @@ export function CommunicatieVoorkeuren({
   emailadressen,
   zaakKanaalVoorkeuren,
   themaKanaalVoorkeuren,
+  themaKeuzeThemaIds,
   zaakThemas,
 }: CommunicatieVoorkeurenProps) {
   const alleEmailadressen = getEmailadressen(
@@ -128,6 +130,7 @@ export function CommunicatieVoorkeuren({
           emailadressen={emailadressen}
           zaakKanaalVoorkeuren={zaakKanaalVoorkeuren}
           themaKanaalVoorkeuren={themaKanaalVoorkeuren}
+          themaKeuzeThemaIds={themaKeuzeThemaIds}
           zaakThemas={zaakThemas}
         />
       </section>

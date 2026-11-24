@@ -66,13 +66,8 @@ export function getAmsterdamKlantcontactConfig(): GemeenteKlantcontactConfig {
       referentie: zaakIdentificatieAlsReferentie,
       kanalen: ['Email', 'Telefoonnummer'],
     },
-    // Een keuze voor alle zaken van een thema. Nu alleen Erfpacht, net als de zaakvoorkeur in het scherm.
-    // De dienstnamen volgen de profielservice (dienstverlener `amsterdam`).
-    themaVoorkeur: {
-      kanalen: { ERFPACHT: ['Email', 'Sms'] },
-      scopes: {
-        ERFPACHT: { dienstverlenerNaam: 'amsterdam', dienstNaam: 'erfpacht' },
-      },
-    },
+    // Nog geen `themaVoorkeur`: de thema's in het scherm zijn de zaaktypen uit Open Zaak, en daar hoort (nog)
+    // geen dienst in de profielservice bij. Zonder deze instelling weigert de BFF elke themakeuze en toont de
+    // frontend er geen. Een thema krijgt een themakeuze zodra het hier met zijn dienst en kanalen staat.
   };
 }

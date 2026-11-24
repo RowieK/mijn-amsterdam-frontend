@@ -4,7 +4,10 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommunicatieVoorkeuren } from './CommunicatieVoorkeuren.tsx';
-import type { ZaakVoorkeurThema } from './useZaakVoorkeurThemas.ts';
+import {
+  OPENZAAK_ZAKEN_THEMA_ID,
+  type ZaakVoorkeurThema,
+} from './useZaakVoorkeurThemas.ts';
 import type {
   ContactgegevenFrontend,
   ContactgegevenPerTypeFrontend,
@@ -17,8 +20,8 @@ import type { ApiResponse } from '../../../../../../../universal/helpers/api.ts'
 import { useAppStateStore } from '../../../../../../hooks/useAppStateStore.ts';
 import { themaConfig } from '../KlantContact-thema-config.ts';
 
-const ZAAK_1 = 'ZAAK-2025-0000011488';
-const ZAAK_2 = 'ZAAK-2025-0000010602';
+const ZAAK_1 = 'ZAAK-2026-0000000166';
+const ZAAK_2 = 'ZAAK-2026-0000000171';
 
 function createContactgegeven(
   contactgegeven: Pick<ContactgegevenFrontend, 'type' | 'value'> &
@@ -65,12 +68,12 @@ function getStandaardContactgegevens(
 
 const zaakThemas: ZaakVoorkeurThema[] = [
   {
-    id: 'ERFPACHT',
-    title: 'Erfpacht',
-    route: '/erfpacht',
+    id: OPENZAAK_ZAKEN_THEMA_ID,
+    title: 'Zaken',
+    route: themaConfig.route.path,
     zaken: [
-      { zaakIdentificatie: ZAAK_1, omschrijving: 'Wijzigen erfpachtrecht' },
-      { zaakIdentificatie: ZAAK_2, omschrijving: 'Overdracht erfpachtrecht' },
+      { zaakIdentificatie: ZAAK_1, omschrijving: 'Melding openbare ruimte' },
+      { zaakIdentificatie: ZAAK_2, omschrijving: 'Aanvraag parkeervergunning' },
     ],
   },
 ];
@@ -96,7 +99,7 @@ const smsVoorkeur = createVoorkeur(ZAAK_1, {
 });
 
 const themaSmsVoorkeur: ThemaKanaalVoorkeurFrontend = {
-  themaId: 'ERFPACHT',
+  themaId: OPENZAAK_ZAKEN_THEMA_ID,
   contactgegeven: createContactgegeven({
     id: 'themaadres-1',
     type: 'Telefoonnummer',
@@ -174,8 +177,8 @@ function getTable() {
   });
 }
 
-function getErfpachtRow() {
-  return within(getTable()).getByRole('row', { name: /Erfpacht/ });
+function getZakenRow() {
+  return within(getTable()).getByRole('row', { name: /Zaken/ });
 }
 
 describe('CommunicatieVoorkeuren', () => {
@@ -434,22 +437,23 @@ describe('CommunicatieVoorkeuren', () => {
 
     it('toont een dienst niet dubbel als er al een thema met zaken met die naam is', () => {
       renderCommunicatieVoorkeuren({
-        aangeslotenDiensten: [{ id: 'erfpacht', beschrijving: 'Erfpacht' }],
+        aangeslotenDiensten: [{ id: 'zaken', beschrijving: 'Zaken' }],
         zaakThemas,
       });
 
       expect(
-        within(getTable()).getAllByRole('row', { name: /Erfpacht/ })
+        within(getTable()).getAllByRole('row', { name: /Zaken/ })
       ).toHaveLength(1);
     });
 
     it('toont een thema met zaken als link naar het thema, met standaard zolang er geen voorkeur is', () => {
       renderCommunicatieVoorkeuren({ zaakThemas });
 
-      const row = getErfpachtRow();
-      expect(
-        within(row).getByRole('link', { name: 'Erfpacht' })
-      ).toHaveAttribute('href', '/erfpacht');
+      const row = getZakenRow();
+      expect(within(row).getByRole('link', { name: 'Zaken' })).toHaveAttribute(
+        'href',
+        themaConfig.route.path
+      );
       expect(within(row).getAllByText('standaard')).toHaveLength(2);
     });
 
@@ -459,7 +463,7 @@ describe('CommunicatieVoorkeuren', () => {
         zaakKanaalVoorkeuren: [smsVoorkeur],
       });
 
-      expect(getErfpachtRow()).toHaveTextContent('standaard, sms: 0612345678');
+      expect(getZakenRow()).toHaveTextContent('standaard, sms: 0612345678');
     });
 
     it('toont geen standaard als elke zaak een voorkeur heeft', () => {
@@ -474,7 +478,7 @@ describe('CommunicatieVoorkeuren', () => {
         ],
       });
 
-      const cellen = within(getErfpachtRow()).getAllByRole('cell');
+      const cellen = within(getZakenRow()).getAllByRole('cell');
       expect(cellen[2]).toHaveTextContent(/^sms: 0612345678/);
     });
   });
@@ -482,10 +486,10 @@ describe('CommunicatieVoorkeuren', () => {
   describe('keuze per zaak', () => {
     async function openModal(user: ReturnType<typeof userEvent.setup>) {
       await user.click(
-        within(getErfpachtRow()).getByRole('button', { name: 'wijzig' })
+        within(getZakenRow()).getByRole('button', { name: 'wijzig' })
       );
       expect(
-        screen.getByRole('heading', { name: 'Notificaties voor Erfpacht' })
+        screen.getByRole('heading', { name: 'Notificaties voor Zaken' })
       ).toBeInTheDocument();
     }
 
@@ -508,7 +512,7 @@ describe('CommunicatieVoorkeuren', () => {
       renderCommunicatieVoorkeuren({ zaakThemas });
 
       expect(
-        within(getErfpachtRow()).queryByRole('button', { name: 'wijzig' })
+        within(getZakenRow()).queryByRole('button', { name: 'wijzig' })
       ).not.toBeInTheDocument();
     });
 
@@ -573,7 +577,7 @@ describe('CommunicatieVoorkeuren', () => {
         screen.getAllByText(
           /U heeft nog geen gevalideerd e-mailadres of mobiel telefoonnummer/
         )
-      ).toHaveLength(3); // één per zaak en één voor het thema
+      ).toHaveLength(2); // één per zaak: de BFF kent voor dit thema geen themakeuze
     });
 
     it('selecteert de bestaande voorkeur op kanaal en waarde, ook al heeft het zaakadres een ander id', async () => {
@@ -705,15 +709,20 @@ describe('CommunicatieVoorkeuren', () => {
   });
 
   describe('keuze voor het hele thema', () => {
+    const themaProps = {
+      zaakThemas,
+      themaKeuzeThemaIds: [OPENZAAK_ZAKEN_THEMA_ID],
+    };
+
     async function openModal(user: ReturnType<typeof userEvent.setup>) {
       await user.click(
-        within(getErfpachtRow()).getByRole('button', { name: 'wijzig' })
+        within(getZakenRow()).getByRole('button', { name: 'wijzig' })
       );
     }
 
     function getThemaForm() {
       const group = screen.getByRole('group', {
-        name: 'Alle zaken van Erfpacht',
+        name: 'Alle zaken van Zaken',
       });
       return { group, form: group.closest('form') as HTMLFormElement };
     }
@@ -725,7 +734,7 @@ describe('CommunicatieVoorkeuren', () => {
     it('selecteert de themakeuze ook als de BFF het nummer als +31 teruggeeft', async () => {
       const user = userEvent.setup();
       renderCommunicatieVoorkeuren({
-        zaakThemas,
+        ...themaProps,
         themaKanaalVoorkeuren: [
           {
             ...themaSmsVoorkeur,
@@ -749,18 +758,18 @@ describe('CommunicatieVoorkeuren', () => {
 
     it('toont in de tabel de themakeuze voor zaken zonder eigen keuze', () => {
       renderCommunicatieVoorkeuren({
-        zaakThemas,
+        ...themaProps,
         themaKanaalVoorkeuren: [themaSmsVoorkeur],
       });
 
-      const cellen = within(getErfpachtRow()).getAllByRole('cell');
+      const cellen = within(getZakenRow()).getAllByRole('cell');
       expect(cellen[2]).toHaveTextContent(/^sms: 0612345678/);
       expect(cellen[2]).not.toHaveTextContent('standaard');
     });
 
     it('toont boven de zaken een keuze voor het hele thema', async () => {
       const user = userEvent.setup();
-      renderCommunicatieVoorkeuren({ zaakThemas });
+      renderCommunicatieVoorkeuren(themaProps);
       await openModal(user);
 
       const { group } = getThemaForm();
@@ -779,13 +788,13 @@ describe('CommunicatieVoorkeuren', () => {
       const user = userEvent.setup();
       const setThema = bffApi
         .post('/services/klantcontact/themavoorkeur/set', {
-          themaId: 'ERFPACHT',
+          themaId: OPENZAAK_ZAKEN_THEMA_ID,
           kanaal: 'Telefoonnummer',
           value: '0612345678',
         })
         .reply(200, { status: 'OK', content: themaSmsVoorkeur });
 
-      renderCommunicatieVoorkeuren({ zaakThemas });
+      renderCommunicatieVoorkeuren(themaProps);
       await openModal(user);
 
       const { group, form } = getThemaForm();
@@ -806,12 +815,12 @@ describe('CommunicatieVoorkeuren', () => {
       setStateInStore([], [themaSmsVoorkeur]);
       const deleteThema = bffApi
         .post('/services/klantcontact/themavoorkeur/delete', {
-          themaId: 'ERFPACHT',
+          themaId: OPENZAAK_ZAKEN_THEMA_ID,
         })
         .reply(200, { status: 'OK', content: null });
 
       renderCommunicatieVoorkeuren({
-        zaakThemas,
+        ...themaProps,
         themaKanaalVoorkeuren: [themaSmsVoorkeur],
       });
       await openModal(user);
@@ -842,7 +851,7 @@ describe('CommunicatieVoorkeuren', () => {
         .reply(500, { status: 'ERROR', message: 'mislukt', content: null });
 
       renderCommunicatieVoorkeuren({
-        zaakThemas,
+        ...themaProps,
         themaKanaalVoorkeuren: [themaSmsVoorkeur],
       });
       await openModal(user);
@@ -863,7 +872,7 @@ describe('CommunicatieVoorkeuren', () => {
     it('toont per zaak dat de themakeuze geldt, en laat de zaak die keuze volgen', async () => {
       const user = userEvent.setup();
       renderCommunicatieVoorkeuren({
-        zaakThemas,
+        ...themaProps,
         themaKanaalVoorkeuren: [themaSmsVoorkeur],
       });
       await openModal(user);
@@ -887,14 +896,48 @@ describe('CommunicatieVoorkeuren', () => {
         value: 'test@example.com',
       });
       renderCommunicatieVoorkeuren({
-        zaakThemas,
+        ...themaProps,
         zaakKanaalVoorkeuren: [emailVoorkeur],
         themaKanaalVoorkeuren: [themaSmsVoorkeur],
       });
 
-      expect(getErfpachtRow()).toHaveTextContent(
+      expect(getZakenRow()).toHaveTextContent(
         'e-mail: test@example.com, sms: 0612345678'
       );
+    });
+
+    it('toont geen keuze voor het hele thema als de BFF die voor het thema niet kent', async () => {
+      const user = userEvent.setup();
+      renderCommunicatieVoorkeuren({ zaakThemas, themaKeuzeThemaIds: [] });
+      await openModal(user);
+
+      expect(
+        screen.queryByRole('group', { name: 'Alle zaken van Zaken' })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Kies per zaak waar u notificaties over de voortgang van uw zaak wilt ontvangen.'
+        )
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('group', { name: new RegExp(ZAAK_1) })
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('radio', {
+          name: 'De keuze voor het hele thema volgen',
+        })
+      ).not.toBeInTheDocument();
+    });
+
+    it('gebruikt geen themakeuze voor een thema waarvoor de BFF die niet kent', () => {
+      renderCommunicatieVoorkeuren({
+        zaakThemas,
+        themaKanaalVoorkeuren: [themaSmsVoorkeur],
+      });
+
+      const cellen = within(getZakenRow()).getAllByRole('cell');
+      expect(cellen[2]).toHaveTextContent('standaard');
+      expect(cellen[2]).not.toHaveTextContent('sms: 0612345678');
     });
   });
 
@@ -1011,7 +1054,7 @@ describe('CommunicatieVoorkeuren', () => {
         renderCommunicatieVoorkeuren({ zaakThemas, emailadressen });
 
         await user.click(
-          within(getErfpachtRow()).getByRole('button', { name: 'wijzig' })
+          within(getZakenRow()).getByRole('button', { name: 'wijzig' })
         );
 
         const group = screen.getByRole('group', {
@@ -1047,7 +1090,7 @@ describe('CommunicatieVoorkeuren', () => {
 
         renderCommunicatieVoorkeuren({ zaakThemas, emailadressen });
         await user.click(
-          within(getErfpachtRow()).getByRole('button', { name: 'wijzig' })
+          within(getZakenRow()).getByRole('button', { name: 'wijzig' })
         );
 
         const group = screen.getByRole('group', {

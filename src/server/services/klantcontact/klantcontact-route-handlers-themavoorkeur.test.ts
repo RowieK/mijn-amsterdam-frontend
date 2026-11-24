@@ -1,14 +1,16 @@
 import type { Request } from 'express';
 import type { MockInstance } from 'vitest';
 
-import { klantcontactBackend } from './klantcontact-backend.ts';
+import {
+  klantcontactBackend,
+  klantcontactConfig,
+} from './klantcontact-backend.ts';
 import { transformContactgegevenSource } from './klantcontact-helpers.ts';
 import type { ContactgegevenSource } from './klantcontact-profieldienst-types.ts';
 import {
   handleDeleteThemaKanaalVoorkeur,
   handleSetThemaKanaalVoorkeur,
 } from './klantcontact-route-handlers.ts';
-import { getAmsterdamKlantcontactConfig } from './klantcontact-service-config.ts';
 import {
   RequestMock,
   ResponseAuthenticatedMock,
@@ -19,7 +21,7 @@ import {
 } from '../../../universal/helpers/api.ts';
 import type { ResponseAuthenticated } from '../../routing/route-helpers.ts';
 
-const THEMA = 'ERFPACHT';
+const THEMA = 'TEST_THEMA';
 const GEVERIFIEERD_ADRES = 'mokum@example.org';
 const ONGEVERIFIEERD_ADRES = 'ongeverifieerd@example.org';
 const THEMA_ADRES = 'thema@example.org';
@@ -40,8 +42,25 @@ function getContactgegeven(
   };
 }
 
-const themaScope =
-  getAmsterdamKlantcontactConfig().themaVoorkeur?.scopes[THEMA];
+const themaScope = {
+  dienstverlenerNaam: 'amsterdam',
+  dienstNaam: 'test-dienst',
+};
+
+// Amsterdam kent (nog) geen thema met een themakeuze. De handlers lezen de config van de BFF zelf, dus zetten
+// de tests daar tijdelijk een thema in.
+const amsterdamThemaVoorkeur = klantcontactConfig.themaVoorkeur;
+
+beforeAll(() => {
+  klantcontactConfig.themaVoorkeur = {
+    kanalen: { [THEMA]: ['Email', 'Sms'] },
+    scopes: { [THEMA]: themaScope },
+  };
+});
+
+afterAll(() => {
+  klantcontactConfig.themaVoorkeur = amsterdamThemaVoorkeur;
+});
 
 const themaAdres = getContactgegeven({
   id: 'thema',
@@ -50,7 +69,7 @@ const themaAdres = getContactgegeven({
   scopes: [
     {
       partij: { identificatieType: 'BSN', identificatieNummer: '999999999' },
-      dienst: { id: themaScope?.dienstNaam ?? '', beschrijving: 'Erfpacht' },
+      dienst: { id: themaScope.dienstNaam, beschrijving: 'Testdienst' },
     },
   ],
 });
@@ -260,5 +279,47 @@ describe('handleDeleteThemaKanaalVoorkeur', () => {
     await handleDeleteThemaKanaalVoorkeur(req, res);
 
     expect(res.status).toHaveBeenCalledWith(500);
+  });
+});
+
+describe('zonder thema met een themakeuze in de config', () => {
+  let res: ResponseAuthenticated;
+  let fetchContactgegevens: MockInstance;
+
+  beforeEach(() => {
+    klantcontactConfig.themaVoorkeur = undefined;
+    res = ResponseAuthenticatedMock.new();
+    fetchContactgegevens = vi.spyOn(
+      klantcontactBackend,
+      'fetchContactgegevens'
+    );
+  });
+
+  afterEach(() => {
+    klantcontactConfig.themaVoorkeur = {
+      kanalen: { [THEMA]: ['Email', 'Sms'] },
+      scopes: { [THEMA]: themaScope },
+    };
+    vi.restoreAllMocks();
+  });
+
+  test('weigert het zetten van een themakeuze', async () => {
+    const req = RequestMock.new().get();
+    req.body = { themaId: THEMA, kanaal: 'Email', value: GEVERIFIEERD_ADRES };
+
+    await handleSetThemaKanaalVoorkeur(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(fetchContactgegevens).not.toHaveBeenCalled();
+  });
+
+  test('weigert het verwijderen van een themakeuze', async () => {
+    const req = RequestMock.new().get();
+    req.body = { themaId: THEMA };
+
+    await handleDeleteThemaKanaalVoorkeur(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(fetchContactgegevens).not.toHaveBeenCalled();
   });
 });

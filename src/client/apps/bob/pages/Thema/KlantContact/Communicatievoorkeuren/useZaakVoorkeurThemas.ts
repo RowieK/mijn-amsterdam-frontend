@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 
 import { useAppStateStore } from '../../../../../../hooks/useAppStateStore.ts';
-import { themaConfig as erfpachtThemaConfig } from '../../Erfpacht/Erfpacht-thema-config.ts';
 import { themaConfig as klantContactThemaConfig } from '../KlantContact-thema-config.ts';
 
 export type ZaakVoorkeurZaak = {
@@ -17,62 +16,46 @@ export type ZaakVoorkeurThema = {
   zaken: ZaakVoorkeurZaak[];
 };
 
+// Het thema voor de zaken waarvan het zaaktype niet bekend is.
 export const OPENZAAK_ZAKEN_THEMA_ID = 'OPENZAAK_ZAKEN';
+const OPENZAAK_ZAKEN_THEMA_TITLE = 'Zaken';
 
 // De thema's waarvan de zaken een kanaalvoorkeur kunnen krijgen. De BFF (WP3 en WP5) kent geen thema's:
 // hij slaat per zaak alleen de `zaakIdentificatie` op, als `referentie` van het adres. Deze hook koppelt
 // de zaken van een thema aan die identificatie, zodat de tabel ze per thema kan tonen.
-// Het doel is alle thema's op te nemen waarvan de gebruiker notificaties over zaken krijgt. Welke dat zijn
-// (staan de zaken in OpenZaak, en neemt de OMC het zaaktype mee) wordt in WP8 bepaald. Een thema komt hier bij
-// zodra dat vaststaat. Tot die tijd staan de zaken uit Open Zaak (WP8) in een eigen thema.
+// Een keuze werkt alleen voor een zaak in Open Zaak, want de BFF controleert daar het eigenaarschap (WP8).
+// Daarom staan hier alleen de zaken die de BFF uit Open Zaak haalt, met elk zaaktype als eigen thema.
+// Versies van een zaaktype hebben dezelfde identificatie en vallen dus onder één thema.
 export function useZaakVoorkeurThemas(): ZaakVoorkeurThema[] {
-  const erfpacht = useAppStateStore((state) => state.ERFPACHT);
   const klantContact = useAppStateStore((state) => state.KLANT_CONTACT);
 
   return useMemo(() => {
-    const themas: ZaakVoorkeurThema[] = [];
+    const openZaakZaken =
+      klantContact.content?.communicatievoorkeuren?.zaken ?? [];
+    const themas = new Map<string, ZaakVoorkeurThema>();
 
-    const isErfpachtZakenActive =
-      erfpachtThemaConfig.featureToggle.active &&
-      erfpachtThemaConfig.featureToggle.wijzigingsaanvragenActive;
-
-    const erfpachtData =
-      erfpacht.content && 'dossiers' in erfpacht.content
-        ? erfpacht.content
-        : null;
-
-    if (isErfpachtZakenActive && erfpachtData?.zaken?.length) {
-      themas.push({
-        id: erfpachtThemaConfig.id,
-        title: erfpachtThemaConfig.title,
-        route: erfpachtThemaConfig.route.path,
-        zaken: erfpachtData.zaken.map((zaak) => ({
-          zaakIdentificatie: zaak.zaakNummer,
-          omschrijving: zaak.zaakOmschrijving,
-        })),
-      });
-    }
-
-    // Een zaak die al bij een thema staat, komt er niet nog een keer in.
-    const zaakIdentificaties = new Set(
-      themas.flatMap((thema) =>
-        thema.zaken.map((zaak) => zaak.zaakIdentificatie)
-      )
-    );
-    const openZaakZaken = (
-      klantContact.content?.communicatievoorkeuren?.zaken ?? []
-    ).filter((zaak) => !zaakIdentificaties.has(zaak.zaakIdentificatie));
-
-    // Er is (nog) geen themapagina voor deze zaken, dus de link gaat naar Mijn contact.
-    if (openZaakZaken.length) {
-      themas.push({
-        id: OPENZAAK_ZAKEN_THEMA_ID,
-        title: 'Zaken',
+    openZaakZaken.forEach(({ zaakIdentificatie, omschrijving, zaaktype }) => {
+      const id = zaaktype
+        ? `${OPENZAAK_ZAKEN_THEMA_ID}_${zaaktype.identificatie}`
+        : OPENZAAK_ZAKEN_THEMA_ID;
+      const thema = themas.get(id) ?? {
+        id,
+        title: zaaktype?.omschrijving ?? OPENZAAK_ZAKEN_THEMA_TITLE,
+        // Er is (nog) geen themapagina voor deze zaken, dus de link gaat naar Mijn contact.
         route: klantContactThemaConfig.route.path,
-        zaken: openZaakZaken,
-      });
-    }
+        zaken: [],
+      };
 
-    return themas;
-  }, [erfpacht, klantContact]);
+      thema.zaken.push({ zaakIdentificatie, omschrijving });
+      themas.set(id, thema);
+    });
+
+    // Op alfabet, met de zaken zonder bekend zaaktype als laatste.
+    return [...themas.values()].sort(
+      (a, b) =>
+        Number(a.id === OPENZAAK_ZAKEN_THEMA_ID) -
+          Number(b.id === OPENZAAK_ZAKEN_THEMA_ID) ||
+        a.title.localeCompare(b.title, 'nl')
+    );
+  }, [klantContact]);
 }

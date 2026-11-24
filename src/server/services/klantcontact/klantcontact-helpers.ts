@@ -9,12 +9,22 @@ import type {
   ZaakKanaalVoorkeurFrontend,
   ZaakVoorkeurZaakFrontend,
 } from './klantcontact-profieldienst-types.ts';
+import { validateThemaKeuze } from './klantcontact-thema-voorkeur.ts';
 import {
   apiSuccessResult,
   type ApiResponse,
 } from '../../../universal/helpers/api.ts';
 import { toDateFormatted } from '../../../universal/helpers/date.ts';
-import type { ZaakMetRollenSource } from '../openzaak/openzaak-types.ts';
+import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
+import {
+  fetchZaaktypen,
+  fetchZakenVanGebruiker,
+} from '../openzaak/openzaak-api-service.ts';
+import type { OpenZaakConfig } from '../openzaak/openzaak-service-config.ts';
+import type {
+  ZaakMetRollenSource,
+  ZaaktypeSource,
+} from '../openzaak/openzaak-types.ts';
 
 // Patroon en maximale lengte van OpenKlant DigitaalAdres.referentie.
 export const ZAAK_REFERENTIE_PATTERN = {
@@ -147,6 +157,26 @@ export function getThemaId(
   );
 }
 
+// De thema's waarvoor de BFF een themakeuze accepteert: met een dienst (scope) en minstens één kanaal dat de
+// klant kan kiezen (een zaakkanaal dat ook voor het thema is toegestaan). Voor elk ander thema weigert de BFF
+// de keuze, dus toont de frontend die daar niet.
+export function getThemaKeuzeThemaIds(
+  config: GemeenteKlantcontactConfig
+): string[] {
+  const themaVoorkeur = config.themaVoorkeur;
+
+  if (!themaVoorkeur) {
+    return [];
+  }
+
+  return Object.keys(themaVoorkeur.scopes).filter((themaId) =>
+    config.zaakVoorkeur.kanalen.some(
+      (kanaal) =>
+        validateThemaKeuze(themaVoorkeur.kanalen, themaId, kanaal).valid
+    )
+  );
+}
+
 export function getThemaKanaalVoorkeuren(
   config: GemeenteKlantcontactConfig,
   contactgegevens: ApiResponse<ContactgegevenSource[]>
@@ -254,21 +284,54 @@ export function getMostRecentByContactgegevenType(
 
 export { isValidEmail } from '../../../universal/helpers/email.ts';
 
-// Een afgesloten zaak (met einddatum) krijgt geen nieuwe status meer, dus ook geen notificatie: die tonen we niet.
-// Zonder omschrijving tonen we de identificatie.
+// Een afgesloten zaak (met einddatum) krijgt geen nieuwe status meer, dus ook geen notificatie.
+function isOpenZaak(zaak: ZaakMetRollenSource): boolean {
+  return !zaak.einddatum;
+}
+
+// Alleen de open zaken. Zonder omschrijving tonen we de identificatie.
 export function toZaakVoorkeurZaken(
-  zaken: ApiResponse<ZaakMetRollenSource[]>
+  zaken: ApiResponse<ZaakMetRollenSource[]>,
+  zaaktypen: Map<string, ZaaktypeSource> = new Map()
 ): ApiResponse<ZaakVoorkeurZaakFrontend[]> {
   if (zaken.status !== 'OK') {
     return zaken;
   }
 
   return apiSuccessResult(
-    zaken.content
-      .filter((zaak) => !zaak.einddatum)
-      .map((zaak) => ({
+    zaken.content.filter(isOpenZaak).map((zaak) => {
+      const zaaktype = zaaktypen.get(zaak.zaaktype);
+
+      return {
         zaakIdentificatie: zaak.identificatie,
         omschrijving: zaak.omschrijving || zaak.identificatie,
-      }))
+        zaaktype: zaaktype
+          ? {
+              identificatie: zaaktype.identificatie,
+              omschrijving: zaaktype.omschrijving || zaaktype.identificatie,
+            }
+          : null,
+      };
+    })
   );
+}
+
+// De open zaken van de gebruiker uit Open Zaak, met hun zaaktype. Lukt het ophalen van een zaaktype niet, dan
+// blijft de zaak zichtbaar zonder zaaktype: de keuze per zaak hangt er niet van af.
+export async function fetchZaakVoorkeurZaken(
+  openZaak: OpenZaakConfig,
+  authProfileAndToken: AuthProfileAndToken
+): Promise<ApiResponse<ZaakVoorkeurZaakFrontend[]>> {
+  const zaken = await fetchZakenVanGebruiker(openZaak, authProfileAndToken);
+
+  if (zaken.status !== 'OK') {
+    return zaken;
+  }
+
+  const zaaktypen = await fetchZaaktypen(
+    openZaak,
+    zaken.content.filter(isOpenZaak).map((zaak) => zaak.zaaktype)
+  );
+
+  return toZaakVoorkeurZaken(zaken, zaaktypen);
 }
