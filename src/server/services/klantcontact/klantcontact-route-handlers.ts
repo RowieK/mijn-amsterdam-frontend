@@ -15,12 +15,13 @@ import {
 } from './klantcontact-communicatievoorkeuren.ts';
 import { getValidZaakReferentie } from './klantcontact-helpers.ts';
 import { apiErrorResult } from '../../../universal/helpers/api.ts';
+import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
 import {
   sendBadRequest,
   sendBadRequestInvalidInput,
   sendInternalServerError,
   sendResponse,
-  sendServiceUnavailable,
+  serviceUnavailableResponse,
   type ResponseAuthenticated,
 } from '../../routing/route-helpers.ts';
 
@@ -116,6 +117,38 @@ export async function handleFetchDienstverlener(
   return sendResponse(res, response);
 }
 
+async function getZaakEigenaarschapFout(
+  authProfileAndToken: AuthProfileAndToken,
+  zaakIdentificatie: string
+) {
+  const controleMislukt = serviceUnavailableResponse(
+    'Controleren van de zaak mislukt'
+  );
+
+  try {
+    const controle = await klantcontactBackend.zaakIsVanGebruiker(
+      authProfileAndToken,
+      zaakIdentificatie
+    );
+
+    if (controle.status !== 'OK') {
+      return controleMislukt;
+    }
+
+    if (controle.content === true) {
+      return null;
+    }
+
+    return apiErrorResult(
+      'Forbidden: de zaak hoort niet bij de ingelogde gebruiker',
+      null,
+      HttpStatusCode.Forbidden
+    );
+  } catch {
+    return controleMislukt;
+  }
+}
+
 // Zet de voorkeur voor één zaak. Alleen een geverifieerd adres van de klant zelf mag gekozen worden,
 // en alleen voor een zaak van de klant zelf (anders kan iemand het kanaal van andermans zaak omleiden).
 // Kan het eigenaarschap niet worden vastgesteld, dan weigeren we ook.
@@ -138,24 +171,13 @@ export async function handleSetZaakKanaalVoorkeur(
     return sendBadRequest(res, 'zaakIdentificatie is not valid');
   }
 
-  const zaakIsVanGebruiker = await klantcontactBackend.zaakIsVanGebruiker(
+  const eigenaarschapFout = await getZaakEigenaarschapFout(
     res.locals.authProfileAndToken,
     zaakIdentificatie
   );
 
-  if (zaakIsVanGebruiker.status !== 'OK') {
-    return sendServiceUnavailable(res, 'Controleren van de zaak mislukt');
-  }
-
-  if (!zaakIsVanGebruiker.content) {
-    return sendResponse(
-      res,
-      apiErrorResult(
-        'Forbidden: de zaak hoort niet bij de ingelogde gebruiker',
-        null,
-        HttpStatusCode.Forbidden
-      )
-    );
+  if (eigenaarschapFout) {
+    return sendResponse(res, eigenaarschapFout);
   }
 
   const contactgegevens = await klantcontactBackend.fetchContactgegevens(
@@ -195,8 +217,7 @@ export async function handleSetZaakKanaalVoorkeur(
   return sendResponse(res, response);
 }
 
-// Verwijdert de voorkeur voor één zaak. Dit raakt alleen adressen in het eigen profiel van de klant,
-// dus anders dan bij het zetten is een controle op eigenaarschap van de zaak niet nodig.
+// Verwijdert de voorkeur voor één zaak nadat het eigenaarschap is bevestigd.
 export async function handleDeleteZaakKanaalVoorkeur(
   req: Request,
   res: ResponseAuthenticated
@@ -205,6 +226,15 @@ export async function handleDeleteZaakKanaalVoorkeur(
 
   if (!getValidZaakReferentie(klantcontactConfig, zaakIdentificatie)) {
     return sendBadRequest(res, 'zaakIdentificatie is not valid');
+  }
+
+  const eigenaarschapFout = await getZaakEigenaarschapFout(
+    res.locals.authProfileAndToken,
+    zaakIdentificatie
+  );
+
+  if (eigenaarschapFout) {
+    return sendResponse(res, eigenaarschapFout);
   }
 
   const response = await deleteZaakKanaalVoorkeur(
