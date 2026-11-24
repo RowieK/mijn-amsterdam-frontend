@@ -31,6 +31,7 @@ type CommunicatieVoorkeurenTabelProps = {
   emailadressen?: ContactgegevenFrontend[];
   zaakKanaalVoorkeuren?: ZaakKanaalVoorkeurFrontend[];
   themaKanaalVoorkeuren?: ThemaKanaalVoorkeurFrontend[];
+  themaIdsMetKeuze?: string[];
   zaakThemas?: ZaakVoorkeurThema[];
 };
 
@@ -57,6 +58,7 @@ export function CommunicatieVoorkeurenTabel({
   emailadressen,
   zaakKanaalVoorkeuren = [],
   themaKanaalVoorkeuren = [],
+  themaIdsMetKeuze = [],
   zaakThemas = [],
 }: CommunicatieVoorkeurenTabelProps) {
   const isZaakVoorkeurActive = themaConfig.featureToggle.zaakvoorkeuren.active;
@@ -111,9 +113,13 @@ export function CommunicatieVoorkeurenTabel({
           </Table.Cell>
         </Table.Row>
         {zaakThemas.map((thema) => {
-          const themaVoorkeur = themaKanaalVoorkeuren.find(
-            (voorkeur) => voorkeur.themaId === thema.id
-          );
+          // Alleen een thema dat de gemeente kent, heeft een keuze voor het hele thema.
+          const heeftThemaKeuze = themaIdsMetKeuze.includes(thema.id);
+          const themaVoorkeur = heeftThemaKeuze
+            ? themaKanaalVoorkeuren.find(
+                (voorkeur) => voorkeur.themaId === thema.id
+              )
+            : undefined;
           const { heeftStandaard, kanalen } = getZaakThemaNotificaties(
             thema.zaken,
             zaakKanaalVoorkeuren,
@@ -137,18 +143,19 @@ export function CommunicatieVoorkeurenTabel({
                       modal={{ title: `Notificaties voor ${thema.title}` }}
                     >
                       <Paragraph className="ams-mb-m">
-                        Kies waar u notificaties over de voortgang van uw zaken
-                        wilt ontvangen: één keer voor het hele thema, of per
-                        zaak. Een keuze voor een zaak gaat voor op de keuze voor
-                        het thema.
+                        {heeftThemaKeuze
+                          ? 'Kies waar u notificaties over de voortgang van uw zaken wilt ontvangen: één keer voor het hele thema, of per zaak. Een keuze voor een zaak gaat voor op de keuze voor het thema.'
+                          : 'Kies per zaak waar u notificaties over de voortgang van uw zaken wilt ontvangen.'}
                       </Paragraph>
-                      <ThemaKanaalVoorkeur
-                        themaId={thema.id}
-                        themaTitel={thema.title}
-                        standaardContactgegevens={standaardContactgegevens}
-                        emailadressen={emailadressen}
-                        voorkeur={themaVoorkeur}
-                      />
+                      {heeftThemaKeuze && (
+                        <ThemaKanaalVoorkeur
+                          themaId={thema.id}
+                          themaTitel={thema.title}
+                          standaardContactgegevens={standaardContactgegevens}
+                          emailadressen={emailadressen}
+                          voorkeur={themaVoorkeur}
+                        />
+                      )}
                       {thema.zaken.map((zaak) => (
                         <ZaakKanaalVoorkeur
                           key={zaak.zaakIdentificatie}

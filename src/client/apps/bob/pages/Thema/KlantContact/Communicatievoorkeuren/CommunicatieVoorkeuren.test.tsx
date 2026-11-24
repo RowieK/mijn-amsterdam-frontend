@@ -149,6 +149,7 @@ function renderCommunicatieVoorkeuren(props: Props = {}) {
         aangeslotenDiensten={[]}
         zaakKanaalVoorkeuren={[]}
         zaakThemas={[]}
+        themaIdsMetKeuze={['ERFPACHT']}
         {...props}
       />
     </MemoryRouter>
@@ -756,6 +757,44 @@ describe('CommunicatieVoorkeuren', () => {
       const cellen = within(getErfpachtRow()).getAllByRole('cell');
       expect(cellen[2]).toHaveTextContent(/^sms: 0612345678/);
       expect(cellen[2]).not.toHaveTextContent('standaard');
+    });
+
+    it('toont geen keuze voor het hele thema als de gemeente die voor dit thema niet kent', async () => {
+      const user = userEvent.setup();
+      renderCommunicatieVoorkeuren({ zaakThemas, themaIdsMetKeuze: [] });
+      await openModal(user);
+
+      expect(
+        screen.queryByRole('group', { name: 'Alle zaken van Erfpacht' })
+      ).not.toBeInTheDocument();
+      // De keuze per zaak blijft werken.
+      expect(
+        screen.getByRole('group', { name: new RegExp(ZAAK_1) })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('group', { name: new RegExp(ZAAK_2) })
+      ).toBeInTheDocument();
+    });
+
+    it('noemt in de uitleg alleen de keuze per zaak als er geen themakeuze is', async () => {
+      const user = userEvent.setup();
+      renderCommunicatieVoorkeuren({ zaakThemas, themaIdsMetKeuze: [] });
+      await openModal(user);
+
+      expect(screen.queryByText(/hele thema/)).not.toBeInTheDocument();
+    });
+
+    it('toont de keuze voor het hele thema alleen bij een thema dat de gemeente kent', async () => {
+      const user = userEvent.setup();
+      renderCommunicatieVoorkeuren({
+        zaakThemas,
+        themaIdsMetKeuze: ['ERFPACHT', 'ANDER_THEMA'],
+      });
+      await openModal(user);
+
+      expect(
+        screen.getByRole('group', { name: 'Alle zaken van Erfpacht' })
+      ).toBeInTheDocument();
     });
 
     it('toont boven de zaken een keuze voor het hele thema', async () => {

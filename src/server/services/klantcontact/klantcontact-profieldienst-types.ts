@@ -129,6 +129,9 @@ export type CommunicatievoorkeurenResponseFrontend = {
   standaardContactgegevens: ContactgegevenPerTypeFrontend | null;
   zaakKanaalVoorkeuren: ZaakKanaalVoorkeurFrontend[];
   themaKanaalVoorkeuren?: ThemaKanaalVoorkeurFrontend[];
+  // De thema's waarvoor de gemeente een themakeuze kent. Voor een thema dat hier niet in staat, kan alleen
+  // per zaak gekozen worden.
+  themaIdsMetKeuze?: string[];
   // Alle eigen e-mailadressen. standaardContactgegevens.Email is daar het eerste van.
   emailadressen?: ContactgegevenFrontend[];
   aangeslotenDiensten?: DienstSource[];

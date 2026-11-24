@@ -141,6 +141,9 @@ export async function fetchCommunicatievoorkeuren(
     themaKanaalVoorkeuren: config
       ? getThemaKanaalVoorkeuren(config, contactgegevens)
       : [],
+    themaIdsMetKeuze: config?.themaVoorkeur
+      ? Object.keys(config.themaVoorkeur.scopes)
+      : [],
     // Zonder zaken uit Open Zaak blijft de rest van de voorkeuren bruikbaar.
     zaken: zakenResponse.status === 'OK' ? zakenResponse.content : [],
   });

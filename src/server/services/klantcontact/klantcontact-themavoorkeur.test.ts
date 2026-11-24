@@ -520,4 +520,44 @@ describe('fetchCommunicatievoorkeuren met themakeuzes', () => {
 
     expect(response.content?.themaKanaalVoorkeuren).toEqual([]);
   });
+
+  it("geeft door voor welke thema's de gemeente een themakeuze kent", async () => {
+    featureToggle.communicatievoorkeuren = true;
+
+    const response = await fetchCommunicatievoorkeuren(
+      getAuthProfileAndToken(),
+      getProfielserviceBackend([standaardAdres]),
+      config
+    );
+
+    expect(response.content?.themaIdsMetKeuze).toEqual([
+      'test-thema-a',
+      'test-thema-b',
+    ]);
+  });
+
+  it("geeft geen thema's met een themakeuze zonder themavoorkeur in de config", async () => {
+    featureToggle.communicatievoorkeuren = true;
+    const { themaVoorkeur: _themaVoorkeur, ...configZonderThemaVoorkeur } =
+      config;
+
+    const response = await fetchCommunicatievoorkeuren(
+      getAuthProfileAndToken(),
+      getProfielserviceBackend([standaardAdres]),
+      configZonderThemaVoorkeur
+    );
+
+    expect(response.content?.themaIdsMetKeuze).toEqual([]);
+  });
+
+  it("geeft geen thema's met een themakeuze zonder config", async () => {
+    featureToggle.communicatievoorkeuren = true;
+
+    const response = await fetchCommunicatievoorkeuren(
+      getAuthProfileAndToken(),
+      getProfielserviceBackend([standaardAdres])
+    );
+
+    expect(response.content?.themaIdsMetKeuze).toEqual([]);
+  });
 });
