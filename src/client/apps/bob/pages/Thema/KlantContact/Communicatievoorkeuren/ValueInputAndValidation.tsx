@@ -152,10 +152,12 @@ function ValueInput({
         dit {typeLabel}. De code moet u straks invullen.
       </Paragraph>
       {isInvalid && (
-        <ErrorMessage id="error2">
-          Dit lijkt geen valide {typeLabel}.
-        </ErrorMessage>
-      )}
+  <ErrorMessage id="error2">
+    {type === ContactgegevenTypeEnum.Telefoonnummer
+      ? 'Vul een Nederlands mobiel nummer in, bijvoorbeeld 06 12345678.'
+      : 'Vul een geldig e-mailadres in, bijvoorbeeld naam@voorbeeld.nl.'}
+  </ErrorMessage>
+)}
       {isError && (
         <ErrorMessage id="error3">
           Het {typeLabel} kan nu niet geverifieerd worden.
