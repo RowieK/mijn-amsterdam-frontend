@@ -89,7 +89,8 @@ function getHeaders({ token }: ConfiguredOpenKlantConfig) {
   };
 }
 
-// Een DigitaalAdres heeft geen aanmaak- of wijzigingsdatum, dus die zijn leeg.
+// Een DigitaalAdres heeft geen aanmaak- of wijzigingsdatum, dus `createdAt` is leeg. De verificatiedatum is de
+// datum van de laatste validatie en staat in `lastUpdated`, zodat de frontend die kan tonen.
 // `overig` (geen e-mail of telefoon) heeft geen equivalent in de frontend en wordt overgeslagen.
 function toContactgegevenSource(
   digitaalAdres: DigitaalAdresSource
@@ -108,7 +109,7 @@ function toContactgegevenSource(
     isDefault: !!digitaalAdres.isStandaardAdres,
     referentie: digitaalAdres.referentie || null,
     createdAt: null,
-    lastUpdated: null,
+    lastUpdated: digitaalAdres.verificatieDatum ?? null,
     scopes: [],
   };
 }

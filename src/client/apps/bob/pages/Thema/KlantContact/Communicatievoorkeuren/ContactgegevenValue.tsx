@@ -140,9 +140,13 @@ export function ContactgegevenValue({
             <span className={styles.Muted}>standaard: </span>
           )}
           <Value contactgegeven={contactgegeven} />
-          {hasValue && contactgegeven.isVerified && (
-            <>(laatst gevalideerd op {contactgegeven.dateModifiedFormatted})</>
-          )}
+          {hasValue &&
+            contactgegeven.isVerified &&
+            contactgegeven.dateModifiedFormatted && (
+              <>
+                (laatst gevalideerd op {contactgegeven.dateModifiedFormatted})
+              </>
+            )}
           {hasValue && !contactgegeven.isVerified && (
             <>
               <Badge label="!" color="red" />{' '}

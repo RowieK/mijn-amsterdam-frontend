@@ -139,7 +139,8 @@ describe('klantcontact-openklant', () => {
           isDefault: true,
           referentie: null, // Open Klant geeft een lege string als er geen referentie is
           createdAt: null,
-          lastUpdated: null,
+          // Open Klant kent geen wijzigingsdatum; de verificatiedatum is de datum van de laatste validatie.
+          lastUpdated: '2026-01-31',
           scopes: [],
         },
         {

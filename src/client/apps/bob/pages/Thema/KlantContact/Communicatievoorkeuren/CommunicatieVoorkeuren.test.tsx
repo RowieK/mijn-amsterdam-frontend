@@ -220,6 +220,25 @@ describe('CommunicatieVoorkeuren', () => {
       expect(screen.queryByText('Postadres')).not.toBeInTheDocument();
     });
 
+    it('toont geen laatst gevalideerd op zonder datum, maar wel het gevalideerde adres', () => {
+      renderCommunicatieVoorkeuren({
+        standaardContactgegevens: getStandaardContactgegevens({
+          Email: createContactgegeven({
+            id: 'email-1',
+            type: 'Email',
+            value: 'test@example.com',
+            dateModified: null,
+            dateModifiedFormatted: null,
+          }),
+        }),
+      });
+
+      expect(getBlock('E-mailadres')).toHaveTextContent('test@example.com');
+      expect(getBlock('E-mailadres')).not.toHaveTextContent(
+        'laatst gevalideerd'
+      );
+    });
+
     it('toont bij een gevalideerd e-mailadres valideer opnieuw, wijzig en verwijder', () => {
       renderCommunicatieVoorkeuren();
 
