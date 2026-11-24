@@ -1,8 +1,13 @@
 import { zaakIsVanGebruiker } from './openzaak-api-service.ts';
-import type { OpenZaakConfig } from './openzaak-service-config.ts';
+import {
+  getOpenZaakConfig,
+  type OpenZaakConfig,
+} from './openzaak-service-config.ts';
 import type { RolSource, ZaakSource } from './openzaak-types.ts';
 import { remoteApiHost } from '../../../testing/setup.ts';
 import { getAuthProfileAndToken, remoteApi } from '../../../testing/utils.ts';
+import { createProfielserviceBackend } from '../klantcontact/klantcontact-profieldienst.ts';
+import { getAmsterdamKlantcontactConfig } from '../klantcontact/klantcontact-service-config.ts';
 
 const BASE_PATH = '/zaken/api/v1';
 const BSN = '999990019';
@@ -53,6 +58,26 @@ function mockInitiatorZoekopdracht(gevondenZaak: ZaakSource) {
 }
 
 describe('zaakIsVanGebruiker', () => {
+  test('gebruikt OpenZaak via de profielservicebackend', async () => {
+    const amsterdamConfig = getAmsterdamKlantcontactConfig();
+    expect(amsterdamConfig.openZaak).toEqual(getOpenZaakConfig());
+
+    const backend = createProfielserviceBackend({
+      ...amsterdamConfig,
+      openZaak: config,
+    });
+    mockZaakZoekopdracht().reply(200, gepagineerd([zaak]));
+    mockInitiatorZoekopdracht(zaak).reply(
+      200,
+      gepagineerd([maakInitiator(zaak, BSN)])
+    );
+
+    const result = await backend.zaakIsVanGebruiker(auth, zaak.identificatie);
+
+    expect(result).toEqual({ status: 'OK', content: true });
+    expect(remoteApi.isDone()).toBe(true);
+  });
+
   test.each([
     { naam: 'staat de ingelogde initiator toe', inpBsn: BSN, toegestaan: true },
     { naam: 'weigert andermans zaak', inpBsn: ANDER_BSN, toegestaan: false },

@@ -24,6 +24,7 @@ import { apiErrorResult, apiSuccessResult, type ApiResponse, } from '../../../un
 import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
 import { getCustomApiConfig } from '../../helpers/source-api-helpers.ts';
 import { requestData } from '../../helpers/source-api-request.ts';
+import { zaakIsVanGebruiker as zaakIsVanGebruikerInOpenZaak } from '../openzaak/openzaak-api-service.ts';
 
 const DEFAULT_DIENSTVERLENER = 'amsterdam';
 
@@ -195,9 +196,7 @@ async function verifyContactgegeven(
   return requestData<VerifyVerificationRequestResponse>(apiConfig);
 }
 
-// De profielservice kent geen zaken en kan dus niet vaststellen van wie een zaak is. De echte controle is een
-// OpenZaak-aanroep (plan WP8) en die service bestaat nog niet. Tot dan weigeren we altijd (fail closed):
-// liever geen zaakvoorkeur dan een voorkeur voor een zaak waarvan het eigenaarschap niet vaststaat.
+// Zonder OpenZaak-configuratie kan de profielservice het eigenaarschap niet vaststellen.
 function zaakIsVanGebruiker(): Promise<ApiResponse<boolean>> {
   return Promise.resolve(
     apiErrorResult(
@@ -210,6 +209,7 @@ function zaakIsVanGebruiker(): Promise<ApiResponse<boolean>> {
 
 export function createProfielserviceBackend({
   profielservice,
+  openZaak,
 }: GemeenteKlantcontactConfig): ProfielserviceBackend {
   return {
     fetchContactgegevens: (authProfileAndToken) =>
@@ -241,6 +241,13 @@ export function createProfielserviceBackend({
       ),
     verifyContactgegeven: (authProfileAndToken, props) =>
       verifyContactgegeven(profielservice, authProfileAndToken, props),
-    zaakIsVanGebruiker,
+    zaakIsVanGebruiker: openZaak
+      ? (authProfileAndToken, zaakIdentificatie) =>
+          zaakIsVanGebruikerInOpenZaak(
+            openZaak,
+            authProfileAndToken,
+            zaakIdentificatie
+          )
+      : zaakIsVanGebruiker,
   };
 }

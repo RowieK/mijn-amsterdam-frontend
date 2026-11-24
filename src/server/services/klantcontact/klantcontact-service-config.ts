@@ -2,6 +2,7 @@ import type { GemeenteKlantcontactConfig } from './klantcontact-backend-types.ts
 import { zaakIdentificatieAlsReferentie } from './klantcontact-helpers.ts';
 import { isEnabled } from '../../config/azure-appconfiguration.ts';
 import { getFromEnv } from '../../helpers/env.ts';
+import { getOpenZaakConfig } from '../openzaak/openzaak-service-config.ts';
 
 export const featureToggle = {
   afspraken: isEnabled('KLANT_CONTACT.afspraken'),
@@ -33,6 +34,7 @@ export function getAmsterdamKlantcontactConfig(): GemeenteKlantcontactConfig {
     profielservice: {
       url: getFromEnv('BFF_PROFIEL_API_BASE_URL'),
     },
+    openZaak: getOpenZaakConfig(),
     zaakVoorkeur: {
       referentie: zaakIdentificatieAlsReferentie,
       kanalen: ['Email', 'Telefoonnummer'],

@@ -8,6 +8,7 @@ import type {
 } from './klantcontact-profieldienst-types.ts';
 import type { ApiResponse } from '../../../universal/helpers/api.ts';
 import type { AuthProfileAndToken } from '../../auth/auth-types.ts';
+import type { OpenZaakConfig } from '../openzaak/openzaak-service-config.ts';
 
 // Zet een zaakidentificatie om naar de `referentie` van een digitaal adres in OpenKlant.
 // Geeft null als het resultaat niet geschikt is als referentie.
@@ -18,6 +19,7 @@ export type ZaakReferentieStrategy = (
 // Alles wat per gemeente verschilt. De kern leest zelf geen omgevingsvariabelen.
 export type GemeenteKlantcontactConfig = {
   profielservice: { url?: string };
+  openZaak?: OpenZaakConfig;
   zaakVoorkeur: {
     referentie: ZaakReferentieStrategy;
     kanalen: ZaakKanaal[];
